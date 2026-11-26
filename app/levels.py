@@ -8,7 +8,7 @@ listening task with pictures) is left out at every level.
 import unicodedata
 
 LEVELS = ["N5", "N4", "N3", "N2", "N1"]
-DEFAULT_LEVEL = "N3"
+LEGACY_LEVEL = "N3"   # data from versions before levels existed
 CATEGORIES = ["vocab", "grammar", "order", "textgrammar", "reading", "listening"]
 
 # (category, subtype, sets in a full mock, sets in a half mock, items per set)

@@ -46,13 +46,13 @@ def touch(conn):
 
 
 def review_state(conn, level):
-    """{set_id: (due: bool, last_answered: datetime)} for the level's sets in
-    the review cycle. An attempt = one pass through a set's items; it is bad
+    """{set_id: (due: bool, last_answered: datetime)} for the level's usable
+    (status 'ready') sets in the review cycle. An attempt = one pass through a set's items; it is bad
     if any item was wrong or unsure."""
     attempts = {}
     for r in conn.execute("""SELECT a.set_id, a.item, a.correct, a.unsure, a.answered_at
                              FROM answers a JOIN sets s ON s.id = a.set_id
-                             WHERE s.level = ? ORDER BY a.id""", (level,)):
+                             WHERE s.level = ? AND s.status = 'ready' ORDER BY a.id""", (level,)):
         lst = attempts.setdefault(r["set_id"], [])
         bad = (not r["correct"]) or r["unsure"]
         if r["item"] == 0 or not lst:
@@ -181,6 +181,18 @@ def end_mock(conn, mock, status):
     conn.execute("UPDATE mocks SET status = ?, finished_at = ? WHERE id = ?", (status, now(), mock["id"]))
 
 
+def discard_mock(conn, mock):
+    """Remove a mock and every answer given in it, as if it never happened.
+    Its questions go back to the unseen pool."""
+    if mock["status"] == "active":
+        # Questions still to be written for it are not wanted either: don't spend Claude usage on them.
+        conn.execute("""UPDATE jobs SET status = 'cancelled', finished_at = datetime('now', 'localtime')
+                        WHERE origin = 'mock' AND status = 'pending'""")
+        end_mock(conn, mock, "abandoned")
+    conn.execute("DELETE FROM answers WHERE mock_id = ?", (mock["id"],))
+    conn.execute("DELETE FROM mocks WHERE id = ?", (mock["id"],))
+
+
 def load_sets(conn, mock):
     ids = [i for s in json.loads(mock["plan"]) for i in s["set_ids"]]
     if not ids:
@@ -231,8 +243,11 @@ def mock_view(conn, level):
     sets = load_sets(conn, mock)
     answered = {f"{r['set_id']}:{r['item']}": r["chosen"] for r in conn.execute(
         "SELECT set_id, item, chosen FROM answers WHERE mock_id = ?", (mock["id"],))}
+    # Still on the way: sets Claude has yet to write, and written listening sets still being recorded.
     pending = conn.execute("SELECT COALESCE(SUM(count - made), 0) FROM jobs WHERE origin = 'mock' "
                            "AND status IN ('pending', 'running')").fetchone()[0]
+    pending += conn.execute("SELECT COUNT(*) FROM sets WHERE status = 'needs_audio' AND level = ?",
+                            (mock["level"],)).fetchone()[0]
     total = sum(s["count"] * s.get("items", 1) for s in plan)
     return {**info, "mock": {"id": mock["id"], "level": mock["level"], "size": mock["size"],
                              "created_at": mock["created_at"], "total_items": total},
@@ -297,13 +312,19 @@ def stats(conn, level):
         """SELECT s.id, s.category, s.subtype, s.target, a.correct, a.unsure, a.answered_at
            FROM answers a JOIN sets s ON s.id = a.set_id
            WHERE (NOT a.correct OR a.unsure) AND s.level = ? ORDER BY a.id DESC LIMIT 25""", (level,))]
-    jobs = [dict(r) for r in conn.execute("SELECT * FROM jobs ORDER BY id DESC LIMIT 12")]
+    # Same order the worker uses: running first, then mock/requests, then the current level, oldest first.
+    queue = [dict(r) for r in conn.execute(
+        """SELECT * FROM jobs WHERE status IN ('pending', 'running')
+           ORDER BY status = 'running' DESC, origin NOT IN ('request', 'mock'), level IS NOT ?, id""", (level,))]
+    recent = [dict(r) for r in conn.execute(
+        "SELECT * FROM jobs WHERE status NOT IN ('pending', 'running') ORDER BY id DESC LIMIT 8")]
+    audio_waiting = conn.execute("SELECT COUNT(*) FROM sets WHERE status = 'needs_audio'").fetchone()[0]
     meta = {r["key"]: r["value"] for r in conn.execute("SELECT * FROM meta")}
     state = review_state(conn, level)
     return {"level": level, "levels": levels.LEVELS,
             "categories": cats, "today": {"answered": t["n"], "correct": t["ok"] or 0},
             "reviews_due": sum(1 for d, _ in state.values() if d), "reviews_waiting": len(state),
-            "mistakes": mistakes, "jobs": jobs,
+            "mistakes": mistakes, "queue": queue, "recent_jobs": recent, "audio_waiting": audio_waiting,
             "flagged": conn.execute("SELECT COUNT(*) FROM sets WHERE status = 'flagged' AND level = ?",
                                     (level,)).fetchone()[0],
             "worker_seen": meta.get("worker_seen"), "worker_note": meta.get("worker_note"),
@@ -349,13 +370,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"error": "bad mode"}, 400)
             exclude = {int(x) for x in q.get("exclude", "").split(",") if x.isdigit()}
             with db() as conn:
+                level = store.current_level(conn)
+                if not level:
+                    return self.send_json({"set": None, "need_level": True})
                 touch(conn)
-                s, msg = pick_next(conn, store.current_level(conn), mode, exclude)
+                s, msg = pick_next(conn, level, mode, exclude)
             self.send_json({"set": s, "message": msg})
         elif url.path == "/api/mock":
             with db() as conn:
+                level = store.current_level(conn)
+                if not level:
+                    return self.send_json({"mock": None, "need_level": True})
                 touch(conn)
-                self.send_json(mock_view(conn, store.current_level(conn)))
+                self.send_json(mock_view(conn, level))
         elif url.path == "/api/mock/result":
             with db() as conn:
                 r = mock_result(conn, int(q.get("id", 0)))
@@ -374,6 +401,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "bad json"}, 400)
         with db() as conn:
             level = store.current_level(conn)
+            if path in ("/api/mock/start", "/api/generate") and not level:
+                return self.send_json({"error": "Choose your JLPT level first."}, 409)
             if path == "/api/answer":
                 row = conn.execute("SELECT data FROM sets WHERE id = ?", (body.get("set_id"),)).fetchone()
                 if not row:
@@ -402,6 +431,9 @@ class Handler(BaseHTTPRequestHandler):
                 if active_mock(conn):
                     return self.send_json({"error": "Finish or abandon the running mock exam first."}, 409)
                 conn.execute("INSERT OR REPLACE INTO meta VALUES ('level', ?)", (new,))
+                # Automatic top-ups for the previous level are no longer wanted (requests still run).
+                conn.execute("""UPDATE jobs SET status = 'cancelled', finished_at = datetime('now', 'localtime')
+                                WHERE origin = 'auto' AND status = 'pending' AND level != ?""", (new,))
                 touch(conn)
                 self.send_json({"ok": True, "level": new})
             elif path == "/api/mock/start":
@@ -416,8 +448,18 @@ class Handler(BaseHTTPRequestHandler):
                 mock = active_mock(conn)
                 if not mock:
                     return self.send_json({"error": "no active mock"}, 404)
-                end_mock(conn, mock, "done" if path.endswith("finish") else "abandoned")
+                if path.endswith("abandon") and body.get("discard"):
+                    discard_mock(conn, mock)
+                else:
+                    end_mock(conn, mock, "done" if path.endswith("finish") else "abandoned")
                 self.send_json({"ok": True, "id": mock["id"]})
+            elif path == "/api/mock/delete":
+                mock = conn.execute("SELECT * FROM mocks WHERE id = ? AND status != 'active'",
+                                    (body.get("id"),)).fetchone()
+                if not mock:
+                    return self.send_json({"error": "no such finished mock"}, 404)
+                discard_mock(conn, mock)
+                self.send_json({"ok": True})
             elif path == "/api/flag":
                 conn.execute("UPDATE sets SET status = 'flagged', flag_note = ? WHERE id = ?",
                              (str(body.get("note", ""))[:500], body.get("set_id")))
@@ -429,10 +471,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"error": "bad category"}, 400)
                 count = max(1, min(30, int(body.get("count", 10))))
                 focus = str(body.get("focus") or "").strip()[:500] or None
+                gen_level = str(body.get("level") or level).upper()   # may differ from the level being studied
+                if gen_level not in levels.LEVELS:
+                    return self.send_json({"error": "bad level"}, 400)
                 per = max(1, round(count / len(cats)))
                 for c in cats:
                     conn.execute("INSERT INTO jobs (level, category, count, focus, origin) "
-                                 "VALUES (?, ?, ?, ?, 'request')", (level, c, per, focus))
+                                 "VALUES (?, ?, ?, ?, 'request')", (gen_level, c, per, focus))
                 touch(conn)
                 self.send_json({"ok": True})
             else:

@@ -368,11 +368,22 @@ def shuffle_options(s):
 
 def run_job(conn, job):
     cat, remaining = job["category"], job["count"] - job["made"]
-    level = job["level"] or store.current_level(conn)
+    level = job["level"] or store.current_level(conn) or levels.LEGACY_LEVEL
     conn.execute("UPDATE jobs SET status = 'running' WHERE id = ?", (job["id"],))
     conn.commit()
     failures = 0
     while remaining > 0:
+        if job["origin"] == "auto" and conn.execute("SELECT 1 FROM mocks WHERE status = 'active'").fetchone():
+            log(f"job {job['id']}: mock exam started, pausing until it ends")
+            conn.execute("UPDATE jobs SET status = 'pending' WHERE id = ?", (job["id"],))
+            conn.commit()
+            return
+        if job["origin"] == "auto" and store.current_level(conn) != level:
+            log(f"job {job['id']}: level switched away from {level}, stopping")
+            conn.execute("UPDATE jobs SET status = 'cancelled', finished_at = datetime('now','localtime') "
+                         "WHERE id = ?", (job["id"],))
+            conn.commit()
+            return
         n = min(BATCH[cat], remaining)
         set_meta(conn, "worker_note", f"Claude is writing {n} {level} {cat} set(s)…")
         log(f"job {job['id']}: asking Claude for {n} {level} {cat} set(s)")
@@ -557,16 +568,21 @@ def one_pass(conn):
     set_meta(conn, "worker_seen", datetime.now().strftime(TIME_FMT))
     check_auth(conn)
     paused = False
-    if studying(conn):
+    level = store.current_level(conn)      # None until the student picks a level in the app
+    # During a mock exam only its questions (and explicit requests) are written: reserving
+    # sets for the mock empties the normal pool, and refilling it can wait until the mock ends.
+    in_mock = conn.execute("SELECT 1 FROM mocks WHERE status = 'active'").fetchone() is not None
+    if studying(conn) and level:
         refresh_usage(conn)
         paused = auto_paused(conn)
-        if not paused:
-            top_up(conn, store.current_level(conn))
+        if not paused and not in_mock:
+            top_up(conn, level)
     # Mock exam and "Generate more" jobs first (in order); above the usage
-    # brake only those run.
+    # brake or during a mock only those run.
     job = conn.execute(f"""SELECT * FROM jobs WHERE status IN ('pending', 'running')
-                           {"AND origin IN ('request', 'mock')" if paused else ""}
-                           ORDER BY origin NOT IN ('request', 'mock'), id LIMIT 1""").fetchone()
+                           {"AND origin IN ('request', 'mock')" if paused or in_mock else ""}
+                           ORDER BY origin NOT IN ('request', 'mock'), level IS NOT ?, id LIMIT 1""",
+                       (level,)).fetchone()
     if job:
         run_job(conn, job)
     make_pending_audio(conn)

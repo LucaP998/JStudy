@@ -1,6 +1,5 @@
 """Database helpers shared by the web server and the worker."""
 import json
-import os
 import sqlite3
 from pathlib import Path
 
@@ -15,11 +14,6 @@ def connect(path):
     return conn
 
 
-def env_level():
-    lv = os.environ.get("JSTUDY_LEVEL", levels.DEFAULT_LEVEL).strip().upper()
-    return lv if lv in levels.LEVELS else levels.DEFAULT_LEVEL
-
-
 def init(path):
     """Create the tables, and upgrade databases made by older versions."""
     with connect(path) as conn:
@@ -29,10 +23,14 @@ def init(path):
             cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
             if coldef.split()[0] not in cols:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {coldef}")
-        # Rows from before levels existed belong to the configured level.
-        lv = current_level(conn)
-        for table in ("sets", "jobs", "mocks"):
-            conn.execute(f"UPDATE {table} SET level = ? WHERE level IS NULL", (lv,))
+        # Rows from before levels existed (only N3 was supported then) are N3.
+        legacy = any(conn.execute(f"SELECT 1 FROM {t} WHERE level IS NULL LIMIT 1").fetchone()
+                     for t in ("sets", "jobs", "mocks"))
+        if legacy:
+            for table in ("sets", "jobs", "mocks"):
+                conn.execute(f"UPDATE {table} SET level = ? WHERE level IS NULL", (levels.LEGACY_LEVEL,))
+            if not current_level(conn):
+                conn.execute("INSERT OR REPLACE INTO meta VALUES ('level', ?)", (levels.LEGACY_LEVEL,))
         # Mock plans from before levels used {key, label}; rename to {subtype}.
         for m in conn.execute("SELECT id, plan FROM mocks").fetchall():
             plan = json.loads(m["plan"])
@@ -44,9 +42,6 @@ def init(path):
 
 
 def current_level(conn):
+    """The level the student picked in the app, or None before the first choice."""
     r = conn.execute("SELECT value FROM meta WHERE key = 'level'").fetchone()
-    if r and r[0] in levels.LEVELS:
-        return r[0]
-    lv = env_level()
-    conn.execute("INSERT OR REPLACE INTO meta VALUES ('level', ?)", (lv,))
-    return lv
+    return r[0] if r and r[0] in levels.LEVELS else None

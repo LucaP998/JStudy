@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     count       INTEGER NOT NULL,
     focus       TEXT,
     origin      TEXT NOT NULL,      -- auto | request | mock
-    status      TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | failed
+    status      TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | failed | cancelled
     made        INTEGER NOT NULL DEFAULT 0,
     error       TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),

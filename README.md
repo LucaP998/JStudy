@@ -27,7 +27,7 @@ couch over your home network.
   end, then a score per scored section with the official pass marks and a review of every mistake.
 - **Explanations in English** for every question, with readings, why the distractors are wrong
   and mnemonics for look-alike words.
-- **Furigana on tap** (or off), stats per section, undo for mis-taps, installable on the phone
+- **Furigana** off, on tap, or always on; stats per section, undo for mis-taps, installable on the phone
   home screen.
 - **Claude usage meter**: your subscription's 5-hour and weekly usage in the header, and automatic
   generation pauses before it eats your whole 5-hour window.
@@ -72,8 +72,8 @@ The setup script checks the requirements and your Claude login, creates `.env` f
 `.env.example`, starts the web app, downloads the VOICEVOX image (~4.5 GB) and installs the worker
 as a systemd user service (`jstudy-worker`). It is safe to run again.
 
-Then open `http://<your-machine>:8097` and pick your level under **Progress**. The first questions
-appear within a minute or two.
+Then open `http://<your-machine>:8097` and choose your JLPT level. The first questions appear
+within a minute or two. You can switch level any time with the level badge next to the title.
 
 Two optional steps:
 
@@ -94,7 +94,6 @@ change, run `docker compose up -d` and `systemctl --user restart jstudy-worker`.
 | `JSTUDY_PORT` | `8097` | Port of the web app |
 | `JSTUDY_BIND` | `0.0.0.0` | Address it listens on (`127.0.0.1` = this machine only) |
 | `JSTUDY_UID` / `JSTUDY_GID` | your ids | Owner of the files in `data/` |
-| `JSTUDY_LEVEL` | `N3` | Starting level (switch any time in the app) |
 | `JSTUDY_MODEL` | `opus` | Claude model that writes questions: `opus`, `sonnet` or `haiku` |
 | `JSTUDY_AUTO_PAUSE` | `0.85` | 5-hour usage at which automatic generation pauses |
 | `JSTUDY_CLAUDE_BIN` | found on `PATH` | Path to the `claude` CLI |
@@ -111,8 +110,10 @@ mistakes, especially in explanations.
   section. Tap 🤔 *not sure* before answering when you are guessing: unsure answers are reviewed
   like wrong ones. Keyboard: `1`–`4` answer, `Enter` next, `u` undo, `p` play audio.
 - **Review:** only the questions due for review.
-- **📝 Mock:** a half or full exam for your level.
-- **Progress:** level, accuracy per section, Claude usage, *Generate more*, recent mistakes.
+- **📝 Mock exam:** a half or full exam for your level. *Stop mock* lets you discard it (as if you never
+  started) or keep your answers; a finished mock can be deleted from its results page.
+- **Level badge** (next to the title): switch between N5 and N1.
+- **Progress:** accuracy per section, Claude usage, *Generate more*, recent mistakes.
 
 Each level keeps its own questions, statistics, reviews and mock exams; switching level never
 deletes anything.

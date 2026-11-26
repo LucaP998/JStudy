@@ -16,7 +16,6 @@ services:
       - DB_PATH=/data/jstudy.db
       - AUDIO_DIR=/data/audio
       - PORT=8097
-      - JSTUDY_LEVEL=${JSTUDY_LEVEL:-N3}
     ports:
       - "${JSTUDY_BIND:-0.0.0.0}:${JSTUDY_PORT:-8097}:8097"
     volumes:

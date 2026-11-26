@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1f2a44">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161b" media="(prefers-color-scheme: dark)">
 <title>JStudy</title>
 <link rel="icon" href="/static/icon-32.png?v=2" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/static/icon-180.png?v=2">
-<link rel="manifest" href="/static/manifest.webmanifest?v=2">
+<link rel="manifest" href="/static/manifest.webmanifest?v=3">
 <meta name="apple-mobile-web-app-title" content="JStudy">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -26,14 +27,25 @@
 body { margin: 0; background: var(--bg); color: var(--ink);
   font: 16px/1.55 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
   -webkit-tap-highlight-color: transparent; }
-header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+header { position: relative; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
   padding: max(8px, env(safe-area-inset-top)) 12px 8px; }
 .bar { display: flex; align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; }
 .bar h1 { font-size: 17px; margin: 0; flex: 1; }
-.tabs button, .chips button, .small { border: 0; background: var(--chip); color: var(--ink); border-radius: 999px;
+.small { border: 0; background: var(--chip); color: var(--ink); border-radius: 999px;
   padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
-.tabs button.on, .chips button.on, .small.on { background: var(--accent); color: #fff; }
-.chips { display: flex; gap: 6px; overflow-x: auto; max-width: 760px; margin: 8px auto 0; padding-bottom: 2px;
+.small.on { background: var(--accent); color: #fff; }
+/* Study / Progress: segmented switch (page navigation) */
+.tabs { display: flex; gap: 2px; padding: 3px; background: var(--chip); border-radius: 10px; flex: none; }
+.tabs button { border: 0; background: none; color: var(--muted); border-radius: 8px; padding: 5px 13px; font: inherit;
+  font-size: 14px; font-weight: 600; cursor: pointer; }
+.tabs button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+/* section chips: outlined filters under Study */
+.chips button { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px;
+  padding: 4px 11px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.chips button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent); font-weight: 600; }
+.studybar { display: flex; gap: 8px; align-items: center; max-width: 760px; margin: 8px auto 0; }
+.chips { display: grid; gap: 6px; flex: 1; min-width: 0;
   scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chips .n { opacity: .75; font-size: 12px; margin-left: 3px; }
@@ -50,6 +62,7 @@ ruby rt { font-size: 0.55em; color: var(--accent); visibility: hidden; }
 ruby.show rt { visibility: visible; }
 body.furi-tap ruby { cursor: pointer; border-bottom: 1px dotted color-mix(in srgb, var(--muted) 50%, transparent); }
 body.furi-off rt { display: none; }
+body.furi-on rt { visibility: visible; }
 .opts { display: grid; gap: 8px; }
 .opt { display: flex; gap: 10px; align-items: flex-start; text-align: left; width: 100%; padding: 12px 14px;
   border: 1.5px solid var(--line); background: var(--card); color: var(--ink); border-radius: 12px;
@@ -115,6 +128,59 @@ select, input[type=text] { font: inherit; padding: 9px 10px; border-radius: 10px
 .mistake .question { font-size: 17px; margin: 6px 0; }
 .mistake .opt { font-size: 16px; padding: 8px 12px; cursor: default; }
 .mistake details { margin-bottom: 8px; }
+.menuwrap { position: relative; flex: none; }
+.lvwrap { margin-right: auto; }
+.bar { flex-wrap: wrap; row-gap: 6px; }
+.bar h1 { flex: none; }
+/* JLPT level: a red stamp, like the 道 icon */
+.lvbtn { border: 0; background: #d2303a; color: #fff; border-radius: 6px; padding: 3px 9px; font: inherit; font-size: 13px;
+  font-weight: 700; letter-spacing: .03em; cursor: pointer; }
+.furibtn { border: 1px dashed var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 4px 10px;
+  font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.chiprow { display: flex; flex-wrap: wrap; gap: 6px; }
+/* iOS Safari blurs a band at the top of the page (just under the status bar), even when scrolled to
+   the top: leave that band empty so the header is sharp. -webkit-touch-callout exists only on iOS. */
+@supports (-webkit-touch-callout: none) {
+  header { padding-top: calc(max(8px, env(safe-area-inset-top)) + 22px); }
+}
+/* mock exam: a different kind of mode: navy outline at the end of the row; filled only when selected */
+.chips button.mockchip { margin-left: auto; border: 1.5px solid #1f2a44; color: #1f2a44; font-weight: 600; }
+.chips button.mockchip.on { background: #1f2a44; color: #fff; }
+@media (prefers-color-scheme: dark) {
+  .chips button.mockchip { border-color: #8ea2d8; color: #8ea2d8; }
+  .chips button.mockchip.on { background: #8ea2d8; color: #14161b; }
+}
+/* furigana control sits in the question card's top-right corner */
+.furiwrap { margin-left: auto; }
+.lvmenu.furimenu { left: auto; right: 0; min-width: 300px; }
+/* phones: keep logo, level, usage and Study/Progress on one row */
+@media (max-width: 480px) {
+  header { padding-left: 10px; padding-right: 10px; }
+  .bar { gap: 6px; }
+  .bar h1 { font-size: 16px; }
+  .usage { min-width: 0; }
+  .usage .m span:first-child { display: none; }
+  .usage .m .bar-acc { width: 22px; }
+  .tabs button { padding: 5px 9px; font-size: 13px; }
+  .furibtn { padding: 3px 8px; font-size: 12px; }
+}
+.lvmenu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 220px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 6px; }
+.lvmenu button, .lvpick button { display: flex; width: 100%; gap: 10px; align-items: baseline; border: 0; background: none;
+  color: var(--ink); font: inherit; text-align: left; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
+.lvmenu button:hover, .lvmenu button.on { background: var(--chip); }
+.lvmenu b, .lvpick b { width: 30px; } .lvmenu span, .lvpick span { color: var(--muted); font-size: 14px; }
+.lvpick { display: grid; gap: 8px; margin: 14px 0 6px; }
+.lvpick button { border: 1.5px solid var(--line); padding: 14px; font-size: 18px; }
+.lvpick button:hover { border-color: var(--accent); }
+tr.running td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.mockopts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0 6px; }
+.mockopt { display: grid; gap: 4px; text-align: left; padding: 14px 16px; border: 1.5px solid var(--line); border-radius: 12px;
+  background: var(--card); color: var(--ink); font: inherit; cursor: pointer; }
+.mockopt:hover { border-color: var(--accent); }
+.mockopt b { font-size: 17px; } .mockopt span { color: var(--muted); font-size: 14px; line-height: 1.45; }
+.mockopt:disabled { opacity: .5; }
+@media (max-width: 480px) { .mockopts { grid-template-columns: 1fr; } }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg);
   padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 10; }
 </style>
@@ -122,12 +188,13 @@ select, input[type=text] { font: inherit; padding: 9px 10px; border-radius: 10px
 <body class="furi-tap">
 <header>
   <div class="bar">
-    <h1><img src="/static/icon-192.png?v=2" alt="" width="22" height="22" style="vertical-align:-4px;margin-right:6px;border-radius:5px">JStudy <button class="small" id="levelBtn" title="JLPT level (change it in Progress)" style="padding:2px 9px;font-size:13px;vertical-align:2px">…</button></h1>
-    <div class="tabs"><button data-tab="study" class="on">Study</button> <button data-tab="stats">Progress</button></div>
+    <h1><img src="/static/icon-192.png?v=2" alt="" width="22" height="22" style="vertical-align:-4px;margin-right:6px;border-radius:5px">JStudy</h1>
+    <div class="menuwrap lvwrap" id="levelWrap"><button class="lvbtn" id="levelBtn" aria-haspopup="true" aria-expanded="false" title="JLPT level">Level ▾</button>
+      <div class="lvmenu" id="levelMenu" role="menu" hidden></div></div>
     <div class="usage" id="usage" title="Claude subscription usage"></div>
-    <button class="small" id="furiBtn" title="Furigana">ふ: tap</button>
+    <div class="tabs" role="tablist"><button data-tab="study" class="on" role="tab">Study</button><button data-tab="stats" role="tab">Progress</button></div>
   </div>
-  <div class="chips" id="modes"></div>
+  <div class="studybar" id="studybar"><div class="chips" id="modes"></div></div>
 </header>
 <main id="main"></main>
 <script>
@@ -148,12 +215,38 @@ const toast = msg => { const t = document.createElement("div"); t.className = "t
 let st = { tab: "study", mode: localStorage.mode || "mix", set: null, item: 0, answered: false, unsure: false,
   recent: [], stats: null, waitTimer: null, speed: +(localStorage.speed || 1) };
 let furi = localStorage.furi || "tap";
+// "Generate more" form: level = null follows the level badge; any other value is an override.
+st.gen = {level: null, category: "mix", count: 10, focus: ""};
 
+const FURI = {off: ["off", "no readings"], tap: ["tap to reveal", "tap a word to see its reading"],
+              on: ["on", "readings always shown"]};
+if (!FURI[furi]) furi = "tap";
 function applyFuri() {
   document.body.className = "furi-" + furi;
-  $("#furiBtn").textContent = "ふ: " + furi;
+  if ($("#furiBtn")) $("#furiBtn").textContent = `ふりがな: ${FURI[furi][0]} ▾`;
 }
-$("#furiBtn").onclick = () => { furi = furi === "tap" ? "off" : "tap"; localStorage.furi = furi; applyFuri(); };
+// Placed in the meta line of question cards (it only matters where there is Japanese text).
+const furiControl = () => `<span class="menuwrap furiwrap" id="furiWrap"><button type="button" class="furibtn" id="furiBtn"
+  aria-haspopup="true" aria-expanded="false" title="Furigana (readings above kanji)">ふりがな: ${FURI[furi][0]} ▾</button>
+  <span class="lvmenu furimenu" id="furiMenu" role="menu" hidden></span></span>`;
+function bindFuri() {
+  const b = $("#furiBtn");
+  if (b) b.onclick = e => { e.stopPropagation(); toggleLevelMenu(false); toggleFuriMenu(); };
+}
+function toggleFuriMenu(open) {
+  const menu = $("#furiMenu");
+  if (!menu) return;
+  const show = open ?? menu.hidden;
+  menu.hidden = !show;
+  $("#furiBtn").setAttribute("aria-expanded", show);
+  if (!show) return;
+  menu.innerHTML = Object.entries(FURI).map(([k, [label, desc]]) =>
+    `<button type="button" role="menuitemradio" aria-checked="${k === furi}" class="${k === furi ? "on" : ""}" data-furi="${k}">
+      <b style="width:auto;min-width:96px">${label}${k === furi ? " ✓" : ""}</b><span>${desc}</span></button>`).join("");
+  menu.querySelectorAll("[data-furi]").forEach(b => b.onclick = () => {
+    furi = localStorage.furi = b.dataset.furi; applyFuri(); toggleFuriMenu(false); });
+}
+
 document.addEventListener("click", e => {
   const r = e.target.closest("ruby");
   if (r && furi === "tap") { r.classList.toggle("show"); e.stopPropagation(); e.preventDefault(); }
@@ -161,35 +254,80 @@ document.addEventListener("click", e => {
 document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
   st.tab = b.dataset.tab;
   document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
-  $("#modes").style.display = st.tab === "study" ? "" : "none";
+  $("#studybar").style.display = st.tab === "study" ? "" : "none";
   st.tab === "study" ? (st.set ? render() : loadNext()) : renderStats();
 });
 
 function renderModes() {
   const s = st.stats, due = s ? s.reviews_due : 0;
-  const modes = [["mix", "Mixed"], ["review", "Review" + (due ? `<span class="n">${due}</span>` : "")], ["mock", "📝 Mock"],
+  const modes = [["mix", "Mixed"], ["review", "Review" + (due ? `<span class="n">${due}</span>` : "")], ["mock", "📝 Mock exam"],
     ...Object.entries(CATS).map(([k, v]) => [k, v + (s ? `<span class="n">${s.categories[k].unseen}</span>` : "")])];
-  $("#modes").innerHTML = modes.map(([k, v]) => `<button data-mode="${k}" class="${k === st.mode ? "on" : ""}">${v}</button>`).join("");
+  const chip = ([k, v]) => `<button data-mode="${k}" class="${k === st.mode ? "on" : ""}${k === "mock" ? " mockchip" : ""}">${v}</button>`;
+  $("#modes").innerHTML = `<div class="chiprow">${modes.slice(0, 3).map(chip).join("")}</div>
+    <div class="chiprow">${modes.slice(3).map(chip).join("")}</div>`;
   $("#modes").querySelectorAll("button").forEach(b => b.onclick = () => {
     if (b.dataset.mode === st.mode && (st.set || st.mode === "mock")) return;   // already there: keep the current question
-    mk.result = null;
+    mk.result = null; mk.stopping = false;
     st.mode = localStorage.mode = b.dataset.mode; renderModes(); st.set = null; loadNext();
   });
 }
 
 async function refreshStats() {
   st.stats = await api("/api/stats");
-  $("#levelBtn").textContent = st.stats.level;
+  // An automatic batch left over from the previous level can't be interrupted: say so instead of
+  // showing its note. Requests and mock jobs for another level are wanted, so their note stays.
+  const run = (st.stats.queue || []).find(j => j.status === "running");
+  if (run && run.origin === "auto" && st.stats.level && run.level !== st.stats.level)
+    st.stats.worker_note = `Finishing a batch of ${run.level} questions Claude already started (usually under a minute), then ${st.stats.level} begins.`;
+  else if (run && run.origin === "request" && run.level !== st.stats.level && st.stats.worker_note)
+    st.stats.worker_note += ` (you asked for ${run.level})`;
+  $("#levelBtn").textContent = (st.stats.level || "Level") + " ▾";
+  $("#studybar").style.display = st.tab === "study" && st.stats.level ? "" : "none";
   renderModes(); renderUsage();
 }
-$("#levelBtn").onclick = e => { e.stopPropagation(); document.querySelector('.tabs [data-tab="stats"]').click(); };
+
+// ------------------------------------------------------------ JLPT level
+const LEVEL_INFO = {N5: "Beginner", N4: "Elementary", N3: "Intermediate", N2: "Upper intermediate", N1: "Advanced"};
+const levelButtons = cur => Object.entries(LEVEL_INFO).map(([lv, d]) =>
+  `<button type="button" role="menuitemradio" aria-checked="${lv === cur}" class="${lv === cur ? "on" : ""}" data-level="${lv}"><b>${lv}</b><span>${d}${lv === cur ? " ✓" : ""}</span></button>`).join("");
+
+function toggleLevelMenu(open) {
+  const menu = $("#levelMenu"), show = open ?? menu.hidden;
+  menu.hidden = !show;
+  $("#levelBtn").setAttribute("aria-expanded", show);
+  if (!show) return;
+  menu.innerHTML = levelButtons(st.stats?.level);
+  menu.querySelectorAll("[data-level]").forEach(b => b.onclick = () => { toggleLevelMenu(false); setLevel(b.dataset.level); });
+}
+$("#levelBtn").onclick = e => { e.stopPropagation(); toggleFuriMenu(false); toggleLevelMenu(); };
+document.addEventListener("click", e => {
+  if (!e.target.closest("#levelWrap")) toggleLevelMenu(false);
+  if (!e.target.closest("#furiWrap")) toggleFuriMenu(false);
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") { toggleLevelMenu(false); toggleFuriMenu(false); } });
 
 async function setLevel(lv) {
+  const first = !st.stats?.level;
+  if (lv === st.stats?.level) return;
   const r = await api("/api/level", {level: lv});
   if (r.error) return toast(r.error);
   st.set = null; st.recent = []; mk.result = null;
-  toast(`Level ${lv}. Questions, stats and mocks now show ${lv}.`);
-  renderStats();
+  st.gen.level = null;                     // a new level from the badge resets any override
+  if (!first) toast(`Switched to ${lv}. Each level keeps its own questions and progress.`);
+  await refreshStats();
+  if (first || st.tab === "study") { document.querySelector('.tabs [data-tab="study"]').click(); }
+  else renderStats();
+}
+
+// First visit: no level chosen yet, so nothing can be generated.
+function renderWelcome() {
+  $("#studybar").style.display = "none";
+  $("#main").innerHTML = `<div class="card"><h2 style="font-size:20px">Welcome to JStudy</h2>
+    <p>Which JLPT level are you studying for? Claude starts writing questions for it as soon as you choose.</p>
+    <div class="lvpick">${levelButtons(null)}</div>
+    <p class="muted">You can switch level any time with the badge next to the title. Each level keeps its own
+      questions, statistics, reviews and mock exams.</p></div>`;
+  $("#main").querySelectorAll("[data-level]").forEach(b => b.onclick = () => setLevel(b.dataset.level));
 }
 
 // Claude subscription usage, as reported to the worker by headless Claude
@@ -217,6 +355,7 @@ async function loadNext() {
   clearTimeout(st.waitTimer);
   if (st.mode === "mock") return loadMock();
   const r = await api(`/api/next?mode=${st.mode}&exclude=${st.recent.join(",")}`);
+  if (r.need_level) { st.set = null; refreshStats(); return renderWelcome(); }
   st.set = r.set; st.item = 0; st.answered = false; st.unsure = false; st.message = r.message;
   render();
   refreshStats();
@@ -244,7 +383,7 @@ function render() {
   m.innerHTML = `<div class="card">
     <div class="meta"><span class="tag">${CATS[s.category]}</span><span class="tag">${esc(s.subtype || "")}</span>
       ${s.reason === "review" ? '<span class="tag review">review</span>' : ""}${s.origin === "request" ? '<span class="tag">requested</span>' : ""}
-      ${multi ? `<span>Question ${st.item + 1} / ${s.items.length}</span>` : ""}</div>
+      ${multi ? `<span>Question ${st.item + 1} / ${s.items.length}</span>` : ""}${furiControl()}</div>
     ${multi ? `<div class="prog"><i style="width:${(st.item / s.items.length) * 100}%"></i></div>` : ""}
     ${listening ? playerHtml(s) : ""}
     ${s.passage ? `<div class="passage">${jp(s.passage)}</div>` : ""}
@@ -256,6 +395,7 @@ function render() {
   </div>`;
   m.querySelectorAll(".opt").forEach(b => b.onclick = () => answer(+b.dataset.i));
   $("#unsureBtn").onclick = () => { st.unsure = !st.unsure; $("#unsureBtn").classList.toggle("on", st.unsure); };
+  bindFuri();
   if (listening) setupPlayer();
 }
 
@@ -351,8 +491,15 @@ let mk = {sel: null, unsure: false, data: null, result: null};
 async function loadMock() {
   clearTimeout(st.waitTimer);
   mk.data = await api("/api/mock");
+  if (mk.data.need_level) { refreshStats(); return renderWelcome(); }
   renderMock();
   refreshStats();
+}
+
+// Real exams allow roughly 1.4 minutes per question.
+function duration(n) {
+  const min = Math.round(n * 1.4 / 10) * 10, h = Math.floor(min / 60), m = min % 60;
+  return "about " + (h ? `${h} h` : "") + (h && m ? " " : "") + (m ? `${m} min` : "");
 }
 
 function mockNext(d) {
@@ -370,9 +517,10 @@ function renderMock() {
     m.innerHTML = `<div class="card"><h2>${d.level} mock exam</h2>
       <p>The real ${d.level} structure without the picture questions (発話表現). Untimed. No answers are shown until the end, then you get
       a score per section and a review of every mistake. Unseen questions are used first; Claude writes the missing ones in exam order while you answer.</p>
-      <div class="row"><button class="next" style="margin:0" data-size="half">Half mock · ~${d.sizes.half} questions</button>
-      <button class="small" data-size="full">Full mock · ~${d.sizes.full} questions</button></div>
-      <p class="muted">Mistakes also enter the normal review cycle.</p></div>
+      <div class="mockopts">${["half", "full"].map(sz => `<button class="mockopt" data-size="${sz}">
+        <b>${sz === "half" ? "Half" : "Full"} mock</b><span>~${d.sizes[sz]} questions · ${duration(d.sizes[sz])}</span></button>`).join("")}</div>
+      <p class="muted">Mistakes also enter the normal review cycle. Changed your mind? You can stop a mock at any time and
+        discard it, as if you never started.</p></div>
       ${d.history.length ? `<div class="card"><h2>Past ${d.level} mocks</h2><table><tr><th>Date</th>${SECTIONS.map(x => `<th>${x}</th>`).join("")}<th></th></tr>
         ${d.history.map(h => `<tr><td>${esc(h.finished_at.slice(5, 16))} <span class="muted">${h.size}</span></td>
           ${SECTIONS.map(x => { const v = h.sections[x]; return `<td>${v && v.total ? Math.round(100 * v.correct / v.total) + "%" : "–"}</td>`; }).join("")}
@@ -390,8 +538,23 @@ function renderMock() {
   const total = d.mock.total_items;
   const nx = mockNext(d);
   const head = `<div class="meta"><span class="tag">📝 ${d.mock.level} ${d.mock.size} mock</span><span>${done} / ~${total}</span>
-      <button class="link" id="abandonBtn" style="margin-left:auto">abandon</button></div>
+      <button class="link" id="abandonBtn" style="margin-left:auto">stop mock</button></div>
     <div class="prog"><i style="width:${Math.min(100, 100 * done / total)}%"></i></div>`;
+  if (mk.stopping) {
+    m.innerHTML = `<div class="card">${head}<h2>Stop this mock?</h2>
+      <div class="mockopts">
+        <button class="mockopt" id="discardBtn"><b>Discard it</b><span>Deletes this mock and the ${done} answer(s) you gave,
+          as if you never started. The questions go back to your pool.</span></button>
+        <button class="mockopt" id="keepBtn"><b>Stop, keep my answers</b><span>They count in your stats and wrong ones come back
+          for review. The mock gets no score.</span></button>
+      </div>
+      <div class="row" style="justify-content:center"><button class="link" id="resumeBtn">← continue the mock</button></div></div>`;
+    $("#discardBtn").onclick = () => stopMock(true);
+    $("#keepBtn").onclick = () => stopMock(false);
+    $("#resumeBtn").onclick = () => { mk.stopping = false; renderMock(); };
+    $("#abandonBtn").remove();
+    return;
+  }
   if (!nx) {
     const missing = d.slots.reduce((n, sl) => n + sl.count - sl.filled, 0);
     const waiting = missing > 0 && d.pending > 0;
@@ -409,7 +572,7 @@ function renderMock() {
   if (mk.key !== `${s.id}:${i}`) { mk.key = `${s.id}:${i}`; mk.sel = null; mk.unsure = false; }
   m.innerHTML = `<div class="card">${head}
     <div class="meta"><span class="tag">${CATS[s.category]}</span><span class="tag">${esc(s.subtype || "")}</span>
-      ${s.items.length > 1 ? `<span>Question ${i + 1} / ${s.items.length}</span>` : ""}</div>
+      ${s.items.length > 1 ? `<span>Question ${i + 1} / ${s.items.length}</span>` : ""}${furiControl()}</div>
     ${listening ? playerHtml(s) : ""}
     ${s.passage ? `<div class="passage">${jp(s.passage)}</div>` : ""}
     <div class="question">${listening ? '<span class="muted">Listen, then choose.</span>' : jp(it.question)}</div>
@@ -421,6 +584,7 @@ function renderMock() {
   $("#unsureBtn").onclick = () => { mk.unsure = !mk.unsure; $("#unsureBtn").classList.toggle("on", mk.unsure); };
   $("#mockNextBtn").onclick = mockConfirm;
   $("#abandonBtn").onclick = abandonMock;
+  bindFuri();
   if (listening) setupPlayer();
 }
 
@@ -445,9 +609,22 @@ async function finishMock() {
   if (r.ok) openResult(r.id);
 }
 
-async function abandonMock() {
-  if (!confirm("Abandon this mock? Your answers so far stay in your history and reviews, but it gets no score.")) return;
-  await api("/api/mock/abandon", {});
+function abandonMock() { mk.stopping = true; renderMock(); window.scrollTo(0, 0); }
+
+async function stopMock(discard) {
+  const r = await api("/api/mock/abandon", {discard});
+  mk.stopping = false;
+  if (r.error) toast(r.error);
+  else toast(discard ? "Mock discarded, as if it never happened." : "Mock stopped. Your answers were kept.");
+  loadMock();
+}
+
+async function deleteMock(id) {
+  if (!confirm("Delete this mock and all its answers? Your stats and reviews will be as if you never took it.")) return;
+  const r = await api("/api/mock/delete", {id});
+  if (r.error) return toast(r.error);
+  mk.result = null;
+  toast("Mock deleted.");
   loadMock();
 }
 
@@ -473,7 +650,9 @@ function renderMockResult(r) {
     <table><tr><th>Type</th><th class="num">Score</th></tr>${r.slots.filter(x => x.total).map(x => `<tr><td>${esc(x.subtype)}</td>
       <td class="num">${x.correct}/${x.total}</td></tr>`).join("")}</table></div>
   <div class="card"><h2>Mistakes and unsure answers (${r.review.length})</h2>
-    ${r.review.length ? r.review.map(reviewHtml).join("") : '<p class="muted">None. よくできました！</p>'}</div>`;
+    ${r.review.length ? r.review.map(reviewHtml).join("") : '<p class="muted">None. よくできました！</p>'}</div>
+  <div class="row" style="justify-content:center"><button class="link" id="deleteMockBtn">Delete this mock (removes it and its answers)</button></div>`;
+  $("#deleteMockBtn").onclick = () => deleteMock(r.id);
   $("#backBtn").onclick = () => { mk.result = null; loadMock(); };
 }
 
@@ -508,6 +687,11 @@ document.addEventListener("keydown", e => {
   else if (st.answered && e.key === "u") $("#undoBtn")?.click();
 });
 
+function jobLabel(j) {
+  const why = {auto: "auto", mock: "mock exam", request: "asked"}[j.origin] || j.origin;
+  return `<b>${esc(j.level || "")}</b> ${CATS[j.category]} <span class="muted">${why}${j.focus && j.origin !== "mock" ? " · " + esc(j.focus) : ""}</span>`;
+}
+
 function pct(ok, n) { return n ? Math.round(100 * ok / n) : null; }
 function accBar(p) {
   if (p === null) return '<span class="muted">–</span>';
@@ -518,13 +702,11 @@ function accBar(p) {
 async function renderStats() {
   await refreshStats();
   if (st.tab !== "stats") return;
+  if (!st.stats.level) return renderWelcome();
   const s = st.stats, workerOn = s.worker_seen && (Date.now() - new Date(s.worker_seen.replace(" ", "T"))) < 90000;
   const tp = pct(s.today.correct, s.today.answered);
   $("#main").innerHTML = `
   ${s.worker_warning ? `<div class="card" style="background:var(--warn-bg)"><b>⚠ Claude</b><p style="margin:4px 0 0">${esc(s.worker_warning)}</p></div>` : ""}
-  <div class="card"><h2>JLPT level</h2><div class="seg">${s.levels.map(lv =>
-    `<button type="button" class="small${lv === s.level ? " on" : ""}" data-level="${lv}">${lv}</button>`).join("")}</div>
-    <p class="muted">Each level has its own questions, stats, reviews and mock exams; switching keeps everything.</p></div>
   <div class="card"><div class="kpis">
     <div class="kpi"><div class="v">${s.today.answered}</div><div class="l">answered today</div></div>
     <div class="kpi"><div class="v">${tp === null ? "–" : tp + "%"}</div><div class="l">sure &amp; correct today</div></div>
@@ -546,17 +728,28 @@ async function renderStats() {
   </table><p class="muted">"Correct" counts only answers not marked 🤔 unsure.</p></div>
   <div class="card"><h2>Generate more</h2>
     <form class="gen" id="genForm">
+      <label>Level<select name="level">${s.levels.map(lv => `<option value="${lv}" ${lv === (st.gen.level || s.level) ? "selected" : ""}>${lv} · ${LEVEL_INFO[lv]}${lv === s.level ? " (studying)" : ""}</option>`).join("")}</select></label>
       <label>Section<select name="category"><option value="mix">All sections</option>
-        ${Object.entries(CATS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
-      <label>How many<div class="seg">${[5, 10, 20].map(n => `<button type="button" class="small${n === 10 ? " on" : ""}" data-n="${n}">${n}</button>`).join("")}</div></label>
-      <label>Focus (optional)<input type="text" name="focus" placeholder="e.g. onomatopoeia for feelings, 〜ばかり vs 〜だけ, 即時応答 only"></label>
+        ${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${k === st.gen.category ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <label>How many<div class="seg">${[5, 10, 20].map(n => `<button type="button" class="small${n === st.gen.count ? " on" : ""}" data-n="${n}">${n}</button>`).join("")}</div></label>
+      <label>Focus (optional)<input type="text" name="focus" value="${esc(st.gen.focus)}" placeholder="e.g. onomatopoeia for feelings, 〜ばかり vs 〜だけ, 即時応答 only"></label>
       <button class="next" style="margin:0">Ask Claude</button>
     </form>
     <p class="muted"><span class="status-dot ${workerOn ? "on" : ""}"></span>Worker ${workerOn ? "online" : "offline"}${s.worker_note ? " · " + esc(s.worker_note) : ""}
       · voice engine ${esc(s.engine || "stopped")}</p>
-    ${s.jobs.length ? `<table><tr><th>Request</th><th>Status</th><th class="num">Made</th></tr>
-      ${s.jobs.map(j => `<tr><td>${esc(j.level || "")} ${CATS[j.category]} <span class="muted">${{auto: "auto", mock: "mock", request: "asked"}[j.origin] || j.origin}${j.focus ? " · " + esc(j.focus) : ""}</span></td>
-        <td>${j.status}${j.error ? `<div class="muted">${esc(j.error.slice(0, 120))}</div>` : ""}</td><td class="num">${j.made}/${j.count}</td></tr>`).join("")}</table>` : ""}
+  </div>
+  <div class="card"><h2>Generation queue${s.queue.length ? ` <span class="muted" style="font-weight:400">· ${s.queue.reduce((n, j) => n + j.count - j.made, 0)} sets to write</span>` : ""}</h2>
+    ${s.queue.length ? `<table><tr><th>#</th><th>What</th><th class="num">Progress</th></tr>
+      ${s.queue.map((j, i) => `<tr${j.status === "running" ? ' class="running"' : ""}><td class="num">${j.status === "running" ? "▶" : i + 1}</td>
+        <td>${jobLabel(j)}${j.status === "running" && s.worker_note ? `<div class="muted">${esc(s.worker_note)}</div>` : ""}</td>
+        <td class="num">${j.made}/${j.count}<div class="bar-acc"><i style="width:${100 * j.made / j.count}%;background:var(--accent)"></i></div></td></tr>`).join("")}</table>`
+      : `<p class="muted">Nothing waiting.${s.worker_note ? " " + esc(s.worker_note) : ""}</p>`}
+    ${s.audio_waiting ? `<p class="muted">🔊 ${s.audio_waiting} listening set(s) waiting for their audio.</p>` : ""}
+    <p class="muted">Order: your requests and mock exams first, then automatic top-ups for ${s.level} (paused while a mock exam is running). Switching level cancels
+      automatic jobs for the old level (a batch already started finishes first).</p>
+    ${s.recent_jobs.length ? `<details><summary class="muted">Recent (${s.recent_jobs.length})</summary><table>
+      ${s.recent_jobs.map(j => `<tr><td>${jobLabel(j)}${j.error ? `<div class="muted">${esc(j.error.slice(0, 120))}</div>` : ""}</td>
+        <td class="muted">${j.status}</td><td class="num">${j.made}/${j.count}</td></tr>`).join("")}</table></details>` : ""}
   </div>
   <div class="card"><h2>Recent mistakes</h2>
     ${s.mistakes.length ? `<table>${s.mistakes.map(x => `<tr><td>${esc(x.target || "")}</td><td class="muted">${CATS[x.category]} · ${esc(x.subtype || "")}</td>
@@ -565,15 +758,20 @@ async function renderStats() {
   </div>
   <p class="muted" style="text-align:center">Questions written by Claude. Voices: VOICEVOX:No.7, 青山龍星, 玄野武宏, 剣崎雌雄,
     冥鳴ひまり, もち子さん, 雨晴はう. Icon: Yuji Syuku font (SIL OFL).</p>`;
-  document.querySelectorAll("[data-level]").forEach(b => b.onclick = () => b.dataset.level !== s.level && setLevel(b.dataset.level));
-  let count = 10;
+  const form = $("#genForm"), field = n => form.elements.namedItem(n);
+  field("level").onchange = () => { st.gen.level = field("level").value === s.level ? null : field("level").value; };
+  field("category").onchange = () => { st.gen.category = field("category").value; };
+  field("focus").oninput = () => { st.gen.focus = field("focus").value; };
   document.querySelectorAll("[data-n]").forEach(b => b.onclick = () => {
-    count = +b.dataset.n; document.querySelectorAll("[data-n]").forEach(x => x.classList.toggle("on", x === b)); });
-  $("#genForm").onsubmit = async e => {
+    st.gen.count = +b.dataset.n; document.querySelectorAll("[data-n]").forEach(x => x.classList.toggle("on", x === b)); });
+  form.onsubmit = async e => {
     e.preventDefault();
-    const f = new FormData(e.target);
-    await api("/api/generate", {category: f.get("category"), count, focus: f.get("focus")});
-    toast("Queued. New questions appear as soon as each batch is ready.");
+    const lv = st.gen.level || s.level;
+    const r = await api("/api/generate", {level: lv, category: st.gen.category, count: st.gen.count, focus: st.gen.focus});
+    if (r.error) return toast(r.error);
+    st.gen.focus = "";
+    toast(lv === s.level ? "Queued. New questions appear as soon as each batch is ready."
+                         : `Queued ${lv} questions. You'll find them when you switch to ${lv}.`);
     renderStats();
   };
 }
