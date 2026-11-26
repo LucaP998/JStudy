@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f2a44">
+<title>JStudy</title>
+<link rel="icon" href="/static/icon-32.png?v=2" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/static/icon-180.png?v=2">
+<link rel="manifest" href="/static/manifest.webmanifest?v=2">
+<meta name="apple-mobile-web-app-title" content="JStudy">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+:root {
+  --bg: #f6f5f1; --card: #fff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e1da;
+  --accent: #2f5bd3; --ok: #1f8a4c; --ok-bg: #e3f4ea; --bad: #c4352b; --bad-bg: #fbe6e4;
+  --warn-bg: #fff4d6; --chip: #ecebe6;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14161b; --card: #1e2128; --ink: #ececef; --muted: #9a9aa3; --line: #2e323b;
+    --accent: #7c9cff; --ok: #5fd08f; --ok-bg: #1c3427; --bad: #ff7b70; --bad-bg: #3d2120;
+    --warn-bg: #3a3220; --chip: #2a2e37; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.55 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  -webkit-tap-highlight-color: transparent; }
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  padding: max(8px, env(safe-area-inset-top)) 12px 8px; }
+.bar { display: flex; align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; }
+.bar h1 { font-size: 17px; margin: 0; flex: 1; }
+.tabs button, .chips button, .small { border: 0; background: var(--chip); color: var(--ink); border-radius: 999px;
+  padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.tabs button.on, .chips button.on, .small.on { background: var(--accent); color: #fff; }
+.chips { display: flex; gap: 6px; overflow-x: auto; max-width: 760px; margin: 8px auto 0; padding-bottom: 2px;
+  scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chips .n { opacity: .75; font-size: 12px; margin-left: 3px; }
+main { max-width: 760px; margin: 0 auto; padding: 14px 12px 120px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+.meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+.tag { background: var(--chip); border-radius: 6px; padding: 1px 7px; }
+.tag.review { background: var(--warn-bg); color: var(--ink); }
+.passage { white-space: pre-wrap; font-size: 17px; line-height: 2; border-left: 3px solid var(--line);
+  padding: 2px 0 2px 12px; margin-bottom: 14px; }
+.question { font-size: 19px; line-height: 2.1; margin: 4px 0 14px; white-space: pre-wrap; }
+.u { text-decoration: underline; text-underline-offset: 5px; text-decoration-thickness: 2px; }
+ruby rt { font-size: 0.55em; color: var(--accent); visibility: hidden; }
+ruby.show rt { visibility: visible; }
+body.furi-tap ruby { cursor: pointer; border-bottom: 1px dotted color-mix(in srgb, var(--muted) 50%, transparent); }
+body.furi-off rt { display: none; }
+.opts { display: grid; gap: 8px; }
+.opt { display: flex; gap: 10px; align-items: flex-start; text-align: left; width: 100%; padding: 12px 14px;
+  border: 1.5px solid var(--line); background: var(--card); color: var(--ink); border-radius: 12px;
+  font: inherit; font-size: 18px; line-height: 1.9; cursor: pointer; }
+.opt .num { flex: none; width: 26px; height: 26px; margin-top: 5px; border-radius: 50%; background: var(--chip);
+  display: grid; place-items: center; font-size: 14px; font-weight: 600; }
+.opt.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+.opt.right { border-color: var(--ok); background: var(--ok-bg); }
+.opt.wrong { border-color: var(--bad); background: var(--bad-bg); }
+.opt:disabled { cursor: default; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.unsure { border: 1.5px dashed var(--line); background: none; color: var(--muted); border-radius: 999px;
+  padding: 6px 14px; font: inherit; font-size: 14px; cursor: pointer; }
+.unsure.on { border-style: solid; border-color: #d9a200; color: var(--ink); background: var(--warn-bg); }
+.result { margin-top: 14px; padding: 12px 14px; border-radius: 12px; line-height: 1.9; }
+.result.ok { background: var(--ok-bg); } .result.bad { background: var(--bad-bg); }
+.result b { display: block; margin-bottom: 4px; }
+.next { margin-left: auto; border: 0; background: var(--accent); color: #fff; border-radius: 12px;
+  padding: 12px 22px; font: inherit; font-weight: 600; font-size: 17px; cursor: pointer; }
+.link { background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 4px; }
+.player { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.play { border: 0; background: var(--accent); color: #fff; border-radius: 12px; padding: 12px 18px; font: inherit;
+  font-size: 17px; font-weight: 600; cursor: pointer; min-width: 120px; }
+.speed button { border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 5px 9px;
+  font: inherit; font-size: 13px; cursor: pointer; }
+.speed button:first-child { border-radius: 8px 0 0 8px; } .speed button:last-child { border-radius: 0 8px 8px 0; }
+.speed button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.prog { height: 4px; background: var(--chip); border-radius: 2px; overflow: hidden; margin-bottom: 12px; }
+.prog i { display: block; height: 100%; background: var(--accent); }
+.script { margin-top: 12px; font-size: 16px; line-height: 2; }
+.script { border-top: 1px solid var(--line); padding-top: 10px; }
+.script div { padding: 2px 0; } .script .gap { height: 8px; } .script .key { color: var(--ok); font-weight: 600; } .script .sp { color: var(--muted); font-size: 13px; display: inline-block; width: 34px; }
+.empty { text-align: center; color: var(--muted); padding: 40px 16px; }
+.spinner { width: 22px; height: 22px; border: 3px solid var(--chip); border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 1s linear infinite; margin: 0 auto 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.bar-acc { height: 6px; background: var(--chip); border-radius: 3px; overflow: hidden; min-width: 50px; }
+.bar-acc i { display: block; height: 100%; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.kpi { background: var(--chip); border-radius: 10px; padding: 10px; }
+.kpi .v { font-size: 22px; font-weight: 650; } .kpi .l { font-size: 12px; color: var(--muted); }
+form.gen { display: grid; gap: 10px; }
+form.gen label { font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+select, input[type=text] { font: inherit; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); width: 100%; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.muted { color: var(--muted); font-size: 13px; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: var(--muted); }
+.status-dot.on { background: var(--ok); }
+.usage { display: grid; gap: 3px; font-size: 11px; color: var(--muted); min-width: 64px; cursor: pointer; }
+.usage .m { display: flex; align-items: center; gap: 4px; }
+.usage .m .bar-acc { width: 34px; min-width: 0; height: 5px; }
+.ulist { display: grid; gap: 10px; }
+.ulist .bar-acc { height: 8px; }
+.sec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sec .kpi .v small { font-size: 13px; color: var(--muted); font-weight: 400; }
+.mistake { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.mistake .question { font-size: 17px; margin: 6px 0; }
+.mistake .opt { font-size: 16px; padding: 8px 12px; cursor: default; }
+.mistake details { margin-bottom: 8px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg);
+  padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 10; }
+</style>
+</head>
+<body class="furi-tap">
+<header>
+  <div class="bar">
+    <h1><img src="/static/icon-192.png?v=2" alt="" width="22" height="22" style="vertical-align:-4px;margin-right:6px;border-radius:5px">JStudy <button class="small" id="levelBtn" title="JLPT level (change it in Progress)" style="padding:2px 9px;font-size:13px;vertical-align:2px">…</button></h1>
+    <div class="tabs"><button data-tab="study" class="on">Study</button> <button data-tab="stats">Progress</button></div>
+    <div class="usage" id="usage" title="Claude subscription usage"></div>
+    <button class="small" id="furiBtn" title="Furigana">ふ: tap</button>
+  </div>
+  <div class="chips" id="modes"></div>
+</header>
+<main id="main"></main>
+<script>
+const CATS = {vocab: "語彙", grammar: "文法", order: "組み立て", textgrammar: "文章の文法", reading: "読解", listening: "聴解"};
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
+// [漢字|かんじ] → <ruby>, 【word】 → underlined
+const jp = s => esc(s).replace(/\[([^|\]]+)\|([^\]]+)\]/g, "<ruby>$1<rt>$2</rt></ruby>")
+                      .replace(/【([^】]*)】/g, '<span class="u">$1</span>')
+                      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+const api = async (path, body) => {
+  const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+  return r.json();
+};
+const toast = msg => { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+  document.body.append(t); setTimeout(() => t.remove(), 2500); };
+
+let st = { tab: "study", mode: localStorage.mode || "mix", set: null, item: 0, answered: false, unsure: false,
+  recent: [], stats: null, waitTimer: null, speed: +(localStorage.speed || 1) };
+let furi = localStorage.furi || "tap";
+
+function applyFuri() {
+  document.body.className = "furi-" + furi;
+  $("#furiBtn").textContent = "ふ: " + furi;
+}
+$("#furiBtn").onclick = () => { furi = furi === "tap" ? "off" : "tap"; localStorage.furi = furi; applyFuri(); };
+document.addEventListener("click", e => {
+  const r = e.target.closest("ruby");
+  if (r && furi === "tap") { r.classList.toggle("show"); e.stopPropagation(); e.preventDefault(); }
+}, true);
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  st.tab = b.dataset.tab;
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+  $("#modes").style.display = st.tab === "study" ? "" : "none";
+  st.tab === "study" ? (st.set ? render() : loadNext()) : renderStats();
+});
+
+function renderModes() {
+  const s = st.stats, due = s ? s.reviews_due : 0;
+  const modes = [["mix", "Mixed"], ["review", "Review" + (due ? `<span class="n">${due}</span>` : "")], ["mock", "📝 Mock"],
+    ...Object.entries(CATS).map(([k, v]) => [k, v + (s ? `<span class="n">${s.categories[k].unseen}</span>` : "")])];
+  $("#modes").innerHTML = modes.map(([k, v]) => `<button data-mode="${k}" class="${k === st.mode ? "on" : ""}">${v}</button>`).join("");
+  $("#modes").querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (b.dataset.mode === st.mode && (st.set || st.mode === "mock")) return;   // already there: keep the current question
+    mk.result = null;
+    st.mode = localStorage.mode = b.dataset.mode; renderModes(); st.set = null; loadNext();
+  });
+}
+
+async function refreshStats() {
+  st.stats = await api("/api/stats");
+  $("#levelBtn").textContent = st.stats.level;
+  renderModes(); renderUsage();
+}
+$("#levelBtn").onclick = e => { e.stopPropagation(); document.querySelector('.tabs [data-tab="stats"]').click(); };
+
+async function setLevel(lv) {
+  const r = await api("/api/level", {level: lv});
+  if (r.error) return toast(r.error);
+  st.set = null; st.recent = []; mk.result = null;
+  toast(`Level ${lv}. Questions, stats and mocks now show ${lv}.`);
+  renderStats();
+}
+
+// Claude subscription usage, as reported to the worker by headless Claude
+function usageColor(p) { return p >= 85 ? "var(--bad)" : p >= 60 ? "#d9a200" : "var(--ok)"; }
+function resetText(ts) {
+  if (!ts) return "";
+  const d = new Date(ts * 1000), mins = Math.round((d - Date.now()) / 60000);
+  if (mins <= 0) return "reset now";
+  const t = d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  return mins < 24 * 60 ? `resets ${t} (in ${mins >= 60 ? Math.floor(mins / 60) + "h " : ""}${mins % 60}m)`
+                        : `resets ${d.toLocaleDateString([], {weekday: "short"})} ${t}`;
+}
+function usageWindows() {
+  const u = st.stats?.usage || {};
+  return [["five_hour", "5h"], ["seven_day", "week"]].filter(([k]) => u[k]?.used != null)
+    .map(([k, l]) => ({key: k, label: l, pct: Math.round(u[k].used * 100), reset: u[k].resets_at}));
+}
+function renderUsage() {
+  const w = usageWindows();
+  $("#usage").innerHTML = w.map(x => `<div class="m"><span style="width:28px">${x.label}</span><div class="bar-acc"><i style="width:${x.pct}%;background:${usageColor(x.pct)}"></i></div>${x.pct}%</div>`).join("");
+}
+$("#usage").onclick = () => document.querySelector('.tabs [data-tab="stats"]').click();
+
+async function loadNext() {
+  clearTimeout(st.waitTimer);
+  if (st.mode === "mock") return loadMock();
+  const r = await api(`/api/next?mode=${st.mode}&exclude=${st.recent.join(",")}`);
+  st.set = r.set; st.item = 0; st.answered = false; st.unsure = false; st.message = r.message;
+  render();
+  refreshStats();
+  if (!r.set && st.mode !== "review") st.waitTimer = setTimeout(() => st.tab === "study" && !st.set && loadNext(), 8000);
+}
+
+function playerHtml(s) {
+  return `<div class="player"><button class="play" id="playBtn">▶ Play</button>
+    <span class="speed">${[0.8, 0.9, 1, 1.15].map(v => `<button data-sp="${v}" class="${v === st.speed ? "on" : ""}">${v}×</button>`).join("")}</span>
+    <audio id="aud" preload="auto" src="/audio/${esc(s.audio)}"></audio></div>`;
+}
+
+function render() {
+  if (st.tab !== "study") return;
+  const m = $("#main"), s = st.set;
+  if (!s) {
+    const note = st.stats?.worker_note;
+    m.innerHTML = `<div class="card empty">${st.mode !== "review" ? '<div class="spinner"></div>' : ""}
+      <div>${esc(st.message || "")}</div>${note ? `<div class="muted" style="margin-top:8px">${esc(note)}</div>` : ""}
+      ${st.mode === "review" ? '<div class="row" style="justify-content:center"><button class="small" onclick="st.mode=localStorage.mode=\'mix\';renderModes();loadNext()">Study mixed questions</button></div>' : ""}</div>`;
+    return;
+  }
+  const it = s.items[st.item], listening = s.category === "listening", hideOpts = it.audio_options && !st.answered;
+  const multi = s.items.length > 1;
+  m.innerHTML = `<div class="card">
+    <div class="meta"><span class="tag">${CATS[s.category]}</span><span class="tag">${esc(s.subtype || "")}</span>
+      ${s.reason === "review" ? '<span class="tag review">review</span>' : ""}${s.origin === "request" ? '<span class="tag">requested</span>' : ""}
+      ${multi ? `<span>Question ${st.item + 1} / ${s.items.length}</span>` : ""}</div>
+    ${multi ? `<div class="prog"><i style="width:${(st.item / s.items.length) * 100}%"></i></div>` : ""}
+    ${listening ? playerHtml(s) : ""}
+    ${s.passage ? `<div class="passage">${jp(s.passage)}</div>` : ""}
+    <div class="question">${listening && !st.answered ? '<span class="muted">Listen, then choose.</span>' : jp(it.question)}</div>
+    <div class="opts">${it.options.map((o, i) => `<button class="opt" data-i="${i}"><span class="num">${i + 1}</span>
+      <span>${hideOpts ? '<span class="muted">(audio)</span>' : jp(o)}</span></button>`).join("")}</div>
+    <div class="row" id="pre"><button class="unsure ${st.unsure ? "on" : ""}" id="unsureBtn">🤔 not sure</button></div>
+    <div id="post"></div>
+  </div>`;
+  m.querySelectorAll(".opt").forEach(b => b.onclick = () => answer(+b.dataset.i));
+  $("#unsureBtn").onclick = () => { st.unsure = !st.unsure; $("#unsureBtn").classList.toggle("on", st.unsure); };
+  if (listening) setupPlayer();
+}
+
+function setupPlayer() {
+  const a = $("#aud"), b = $("#playBtn");
+  a.playbackRate = st.speed;
+  b.onclick = () => a.paused ? a.play() : a.pause();
+  a.onplay = () => b.textContent = "❚❚ Pause";
+  a.onpause = () => b.textContent = "▶ Play";
+  a.onended = () => b.textContent = "↻ Replay";
+  document.querySelectorAll(".speed button").forEach(x => x.onclick = () => {
+    st.speed = +x.dataset.sp; localStorage.speed = st.speed; a.playbackRate = st.speed;
+    document.querySelectorAll(".speed button").forEach(y => y.classList.toggle("on", y === x));
+  });
+}
+
+async function answer(i) {
+  if (st.answered) return;
+  st.answered = true;
+  const s = st.set, it = s.items[st.item];
+  const r = await api("/api/answer", {set_id: s.id, item: st.item, chosen: i, unsure: st.unsure});
+  st.answerId = r.answer_id;
+  st.recent = [s.id, ...st.recent.filter(x => x !== s.id)].slice(0, 6);
+  const a = $("#aud");
+  if (s.category === "listening" || it.audio_options) {
+    // re-render to reveal question/options text, keep the audio element state
+    const wasPlaying = a && !a.paused, t = a ? a.currentTime : 0;
+    render();
+    const a2 = $("#aud"); if (a2) { a2.currentTime = t; if (wasPlaying) a2.play(); }
+  }
+  document.querySelectorAll(".opt").forEach(b => {
+    b.disabled = true;
+    const k = +b.dataset.i;
+    if (k === r.answer) b.classList.add("right"); else if (k === i) b.classList.add("wrong");
+  });
+  $("#pre").style.display = "none";
+  const last = st.item === s.items.length - 1;
+  $("#post").innerHTML = `<div class="result ${r.correct ? "ok" : "bad"}">
+      <b>${r.correct ? (st.unsure ? "Correct (marked unsure, it will come back)" : "Correct") : "Wrong, it will come back for review"}</b>${jp(it.explanation)}</div>
+    ${s.script ? transcript(s, it, r.answer) : ""}
+    <div class="row"><button class="small" id="undoBtn" title="Mis-tapped? Take the answer back (key: u)">↶ Undo</button>
+      <button class="link" id="flagBtn">Report a problem with this question</button>
+      <button class="next" id="nextBtn">${last ? "Next →" : "Next question →"}</button></div>`;
+  $("#nextBtn").onclick = next;
+  $("#flagBtn").onclick = flag;
+  $("#undoBtn").onclick = undo;
+  $("#nextBtn").focus({preventScroll: true});
+  $("#post").scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
+// Everything the audio says, in order: script lines, then (when the choices
+// are only heard) the numbered choices as read, with the right one marked.
+function transcript(s, it, key) {
+  const SP = {N: "📢", M: "男", F: "女"};
+  const line = (sp, html, cls = "") => `<div class="${cls}"><span class="sp">${sp}</span>${html}</div>`;
+  let html = s.script.map(l => line(SP[l.speaker] || "", jp(l.text))).join("");
+  if (it.audio_options) {
+    const first = s.script[0]?.speaker;
+    const who = s.subtype === "即時応答" ? (first === "M" ? "女" : "男") : "📢";
+    html += '<div class="gap"></div>' + it.options.map((o, i) =>
+      line(who, `<b>${i + 1}.</b> ${jp(o)}${i === key ? " ✓" : ""}`, i === key ? "key" : "")).join("");
+  }
+  return `<div class="script"><div class="muted" style="margin-bottom:4px">Transcript</div>${html}</div>`;
+}
+
+async function undo() {
+  const r = await api("/api/undo", {answer_id: st.answerId});
+  if (!r.ok) { toast("Too late to undo this one."); return; }
+  st.answered = false; st.answerId = null;
+  render();
+  toast("Answer removed. Choose again.");
+}
+
+function next() {
+  const s = st.set;
+  if (st.item < s.items.length - 1) { st.item++; st.answered = false; st.unsure = false; render(); window.scrollTo(0, 0); }
+  else { window.scrollTo(0, 0); loadNext(); }
+}
+
+async function flag() {
+  const note = prompt("What's wrong? (wrong answer key, two correct options, bad audio, unnatural Japanese…)");
+  if (note === null) return;
+  await api("/api/flag", {set_id: st.set.id, note});
+  toast("Reported. This question won't be shown again.");
+  loadNext();
+}
+
+// ---------------------------------------------------------------- mock exam
+// No feedback while answering (like the real exam): pick, then confirm with Next.
+// Scores and a review of every mistake at the end.
+let mk = {sel: null, unsure: false, data: null, result: null};
+
+async function loadMock() {
+  clearTimeout(st.waitTimer);
+  mk.data = await api("/api/mock");
+  renderMock();
+  refreshStats();
+}
+
+function mockNext(d) {
+  for (const s of d.sets) for (let i = 0; i < s.items.length; i++)
+    if (!(`${s.id}:${i}` in d.answered)) return {s, i};
+  return null;
+}
+
+function renderMock() {
+  if (st.tab !== "study" || st.mode !== "mock") return;
+  const m = $("#main"), d = mk.data;
+  if (mk.result) return renderMockResult(mk.result);
+  if (!d.mock) {
+    const SECTIONS = d.scoring.sections;
+    m.innerHTML = `<div class="card"><h2>${d.level} mock exam</h2>
+      <p>The real ${d.level} structure without the picture questions (発話表現). Untimed. No answers are shown until the end, then you get
+      a score per section and a review of every mistake. Unseen questions are used first; Claude writes the missing ones in exam order while you answer.</p>
+      <div class="row"><button class="next" style="margin:0" data-size="half">Half mock · ~${d.sizes.half} questions</button>
+      <button class="small" data-size="full">Full mock · ~${d.sizes.full} questions</button></div>
+      <p class="muted">Mistakes also enter the normal review cycle.</p></div>
+      ${d.history.length ? `<div class="card"><h2>Past ${d.level} mocks</h2><table><tr><th>Date</th>${SECTIONS.map(x => `<th>${x}</th>`).join("")}<th></th></tr>
+        ${d.history.map(h => `<tr><td>${esc(h.finished_at.slice(5, 16))} <span class="muted">${h.size}</span></td>
+          ${SECTIONS.map(x => { const v = h.sections[x]; return `<td>${v && v.total ? Math.round(100 * v.correct / v.total) + "%" : "–"}</td>`; }).join("")}
+          <td><button class="link" data-res="${h.id}">open</button></td></tr>`).join("")}</table></div>` : ""}`;
+    m.querySelectorAll("[data-size]").forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      const r = await api("/api/mock/start", {size: b.dataset.size});
+      if (r.error) toast(r.error);
+      loadMock();
+    });
+    m.querySelectorAll("[data-res]").forEach(b => b.onclick = () => openResult(+b.dataset.res));
+    return;
+  }
+  const done = Object.keys(d.answered).length;
+  const total = d.mock.total_items;
+  const nx = mockNext(d);
+  const head = `<div class="meta"><span class="tag">📝 ${d.mock.level} ${d.mock.size} mock</span><span>${done} / ~${total}</span>
+      <button class="link" id="abandonBtn" style="margin-left:auto">abandon</button></div>
+    <div class="prog"><i style="width:${Math.min(100, 100 * done / total)}%"></i></div>`;
+  if (!nx) {
+    const missing = d.slots.reduce((n, sl) => n + sl.count - sl.filled, 0);
+    const waiting = missing > 0 && d.pending > 0;
+    m.innerHTML = `<div class="card">${head}<div class="empty">
+      ${waiting ? `<div class="spinner"></div><div>Claude is writing the next questions (${missing} set(s) to go)…</div>
+        <div class="muted" style="margin-top:6px">${esc(st.stats?.worker_note || "")}</div>`
+        : `<div>${missing ? `${missing} set(s) could not be prepared; they are skipped.` : "All questions answered."}</div>`}
+      <div class="row" style="justify-content:center"><button class="${waiting ? "small" : "next"}" id="finishBtn">${waiting ? "Finish now" : "See results"}</button></div></div></div>`;
+    $("#finishBtn").onclick = finishMock;
+    $("#abandonBtn").onclick = abandonMock;
+    if (waiting) st.waitTimer = setTimeout(() => st.mode === "mock" && st.tab === "study" && loadMock(), 8000);
+    return;
+  }
+  const {s, i} = nx, it = s.items[i], listening = s.category === "listening";
+  if (mk.key !== `${s.id}:${i}`) { mk.key = `${s.id}:${i}`; mk.sel = null; mk.unsure = false; }
+  m.innerHTML = `<div class="card">${head}
+    <div class="meta"><span class="tag">${CATS[s.category]}</span><span class="tag">${esc(s.subtype || "")}</span>
+      ${s.items.length > 1 ? `<span>Question ${i + 1} / ${s.items.length}</span>` : ""}</div>
+    ${listening ? playerHtml(s) : ""}
+    ${s.passage ? `<div class="passage">${jp(s.passage)}</div>` : ""}
+    <div class="question">${listening ? '<span class="muted">Listen, then choose.</span>' : jp(it.question)}</div>
+    <div class="opts">${it.options.map((o, k) => `<button class="opt ${mk.sel === k ? "sel" : ""}" data-i="${k}"><span class="num">${k + 1}</span>
+      <span>${it.audio_options ? '<span class="muted">(audio)</span>' : jp(o)}</span></button>`).join("")}</div>
+    <div class="row"><button class="unsure ${mk.unsure ? "on" : ""}" id="unsureBtn">🤔 not sure</button>
+      <button class="next" id="mockNextBtn" ${mk.sel === null ? "disabled style=\"opacity:.4\"" : ""}>Next →</button></div></div>`;
+  m.querySelectorAll(".opt").forEach(b => b.onclick = () => mockSelect(+b.dataset.i));
+  $("#unsureBtn").onclick = () => { mk.unsure = !mk.unsure; $("#unsureBtn").classList.toggle("on", mk.unsure); };
+  $("#mockNextBtn").onclick = mockConfirm;
+  $("#abandonBtn").onclick = abandonMock;
+  if (listening) setupPlayer();
+}
+
+function mockSelect(k) {
+  mk.sel = k;
+  document.querySelectorAll(".opt").forEach(b => b.classList.toggle("sel", +b.dataset.i === k));
+  const n = $("#mockNextBtn"); n.disabled = false; n.style.opacity = "";
+}
+
+async function mockConfirm() {
+  if (mk.sel === null || mk.busy) return;
+  mk.busy = true;
+  const [sid, i] = mk.key.split(":").map(Number);
+  await api("/api/answer", {set_id: sid, item: i, chosen: mk.sel, unsure: mk.unsure, mock_id: mk.data.mock.id});
+  mk.busy = false;
+  window.scrollTo(0, 0);
+  loadMock();
+}
+
+async function finishMock() {
+  const r = await api("/api/mock/finish", {});
+  if (r.ok) openResult(r.id);
+}
+
+async function abandonMock() {
+  if (!confirm("Abandon this mock? Your answers so far stay in your history and reviews, but it gets no score.")) return;
+  await api("/api/mock/abandon", {});
+  loadMock();
+}
+
+async function openResult(id) {
+  mk.result = await api(`/api/mock/result?id=${id}`);
+  renderMock();
+  window.scrollTo(0, 0);
+}
+
+function renderMockResult(r) {
+  const pctOf = v => v && v.total ? Math.round(100 * v.correct / v.total) : null;
+  const SECTIONS = r.scoring.sections, sc = r.scoring;
+  const maxTotal = SECTIONS.reduce((n, x) => n + sc.max[x], 0);
+  const all = SECTIONS.reduce((a, x) => ({correct: a.correct + (r.sections[x]?.correct || 0), total: a.total + (r.sections[x]?.total || 0)}), {correct: 0, total: 0});
+  $("#main").innerHTML = `<div class="card"><div class="meta"><span class="tag">📝 ${r.level} ${r.size} mock</span><span>${esc((r.finished_at || "").slice(0, 16))}</span>
+      <button class="link" id="backBtn" style="margin-left:auto">← mocks</button></div>
+    <h2>Score: ${all.correct} / ${all.total} (${pctOf(all) ?? "–"}%)</h2>
+    <div class="sec">${SECTIONS.map(x => { const v = r.sections[x], p = pctOf(v);
+      return `<div class="kpi"><div class="v">${p ?? "–"}${p !== null ? "%" : ""} <small>${v ? v.correct + "/" + v.total : ""}</small></div><div class="l">${x}</div>${accBar(p)}</div>`; }).join("")}</div>
+    <p class="muted">Raw scores, only a rough guide: the real exam converts them to scaled scores. To pass ${r.level} you need
+      ${sc.pass_total}/${maxTotal} overall and at least ${SECTIONS.map(x => `${sc.pass_section[x]}/${sc.max[x]} in ${x}`).join(" and ")};
+      aiming for about 60%+ in every section here gives a comfortable margin.</p>
+    <table><tr><th>Type</th><th class="num">Score</th></tr>${r.slots.filter(x => x.total).map(x => `<tr><td>${esc(x.subtype)}</td>
+      <td class="num">${x.correct}/${x.total}</td></tr>`).join("")}</table></div>
+  <div class="card"><h2>Mistakes and unsure answers (${r.review.length})</h2>
+    ${r.review.length ? r.review.map(reviewHtml).join("") : '<p class="muted">None. よくできました！</p>'}</div>`;
+  $("#backBtn").onclick = () => { mk.result = null; loadMock(); };
+}
+
+function reviewHtml(s) {
+  const parts = s.items.map((it, i) => {
+    const mark = s.marks[i];
+    if (mark.correct && !mark.unsure) return "";
+    return `<div class="question">${jp(it.question)}</div>
+      <div class="opts">${it.options.map((o, k) => `<div class="opt ${k === it.answer ? "right" : k === mark.chosen ? "wrong" : ""}">
+        <span class="num">${k + 1}</span><span>${jp(o)}</span></div>`).join("")}</div>
+      <div class="result ${mark.correct ? "ok" : "bad"}"><b>${mark.chosen === null ? "Not answered" : mark.correct ? "Correct, but unsure" : "Wrong"}</b>${jp(it.explanation)}</div>
+      ${s.script ? transcript(s, it, it.answer) : ""}`;
+  }).join("");
+  return `<div class="mistake"><div class="meta"><span class="tag">${CATS[s.category]}</span><span class="tag">${esc(s.subtype || "")}</span></div>
+    ${s.audio ? `<audio controls preload="none" src="/audio/${esc(s.audio)}" style="width:100%;margin-bottom:8px"></audio>` : ""}
+    ${s.passage ? `<details><summary class="muted">Passage</summary><div class="passage">${jp(s.passage)}</div></details>` : ""}${parts}</div>`;
+}
+
+document.addEventListener("keydown", e => {
+  if (st.tab === "study" && st.mode === "mock" && mk.data?.mock && !mk.result && !e.target.matches("input,select,textarea")) {
+    if (/^[1-4]$/.test(e.key) && document.querySelector(`.opt[data-i="${+e.key - 1}"]`)) mockSelect(+e.key - 1);
+    else if (e.key === "Enter") mockConfirm();
+    else if (e.key === "p") $("#playBtn")?.click();
+    return;
+  }
+});
+document.addEventListener("keydown", e => {
+  if (st.tab !== "study" || !st.set || e.target.matches("input,select,textarea")) return;
+  if (!st.answered && /^[1-4]$/.test(e.key) && +e.key <= st.set.items[st.item].options.length) answer(+e.key - 1);
+  else if (st.answered && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); next(); }
+  else if (e.key === "p") $("#playBtn")?.click();
+  else if (st.answered && e.key === "u") $("#undoBtn")?.click();
+});
+
+function pct(ok, n) { return n ? Math.round(100 * ok / n) : null; }
+function accBar(p) {
+  if (p === null) return '<span class="muted">–</span>';
+  const c = p >= 80 ? "var(--ok)" : p >= 60 ? "#d9a200" : "var(--bad)";
+  return `<div style="display:flex;gap:6px;align-items:center"><div class="bar-acc" style="flex:1"><i style="width:${p}%;background:${c}"></i></div><span>${p}%</span></div>`;
+}
+
+async function renderStats() {
+  await refreshStats();
+  if (st.tab !== "stats") return;
+  const s = st.stats, workerOn = s.worker_seen && (Date.now() - new Date(s.worker_seen.replace(" ", "T"))) < 90000;
+  const tp = pct(s.today.correct, s.today.answered);
+  $("#main").innerHTML = `
+  ${s.worker_warning ? `<div class="card" style="background:var(--warn-bg)"><b>⚠ Claude</b><p style="margin:4px 0 0">${esc(s.worker_warning)}</p></div>` : ""}
+  <div class="card"><h2>JLPT level</h2><div class="seg">${s.levels.map(lv =>
+    `<button type="button" class="small${lv === s.level ? " on" : ""}" data-level="${lv}">${lv}</button>`).join("")}</div>
+    <p class="muted">Each level has its own questions, stats, reviews and mock exams; switching keeps everything.</p></div>
+  <div class="card"><div class="kpis">
+    <div class="kpi"><div class="v">${s.today.answered}</div><div class="l">answered today</div></div>
+    <div class="kpi"><div class="v">${tp === null ? "–" : tp + "%"}</div><div class="l">sure &amp; correct today</div></div>
+    <div class="kpi"><div class="v">${s.reviews_due}</div><div class="l">reviews due (${s.reviews_waiting} in cycle)</div></div>
+  </div></div>
+  <div class="card"><h2>Claude usage</h2>${(() => {
+    const w = usageWindows(), checked = s.usage?.checked_at;
+    if (!w.length) return '<p class="muted">No reading yet. It appears after the worker\'s first Claude call, and only with a Claude subscription login (API keys report no usage).</p>';
+    return `<div class="ulist">${w.map(x => `<div><div style="display:flex;justify-content:space-between"><span>${x.key === "five_hour" ? "5-hour window" : "Weekly"}</span><b>${x.pct}%</b></div>
+      <div class="bar-acc"><i style="width:${x.pct}%;background:${usageColor(x.pct)}"></i></div><span class="muted">${resetText(x.reset)}</span></div>`).join("")}</div>
+      <p class="muted">Whole subscription (this app + your other Claude sessions). Checked ${checked ? new Date(checked * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : "–"};
+      refreshed every 10 min while you study. Above the pause limit (JSTUDY_AUTO_PAUSE, 85% by default) automatic questions pause; your own requests still run.</p>`;
+  })()}</div>
+  <div class="card"><h2>By section</h2><table>
+    <tr><th>Section</th><th>Last 7 days</th><th>All time</th><th class="num">New</th></tr>
+    ${Object.entries(CATS).map(([k, v]) => { const c = s.categories[k]; return `<tr><td>${v}</td>
+      <td>${accBar(pct(c.week_correct, c.week_answered))}</td><td>${accBar(pct(c.correct, c.answered))}<span class="muted">${c.answered} answered</span></td>
+      <td class="num">${c.unseen}${c.generating ? `<div class="muted">+${c.generating}</div>` : ""}</td></tr>`; }).join("")}
+  </table><p class="muted">"Correct" counts only answers not marked 🤔 unsure.</p></div>
+  <div class="card"><h2>Generate more</h2>
+    <form class="gen" id="genForm">
+      <label>Section<select name="category"><option value="mix">All sections</option>
+        ${Object.entries(CATS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+      <label>How many<div class="seg">${[5, 10, 20].map(n => `<button type="button" class="small${n === 10 ? " on" : ""}" data-n="${n}">${n}</button>`).join("")}</div></label>
+      <label>Focus (optional)<input type="text" name="focus" placeholder="e.g. onomatopoeia for feelings, 〜ばかり vs 〜だけ, 即時応答 only"></label>
+      <button class="next" style="margin:0">Ask Claude</button>
+    </form>
+    <p class="muted"><span class="status-dot ${workerOn ? "on" : ""}"></span>Worker ${workerOn ? "online" : "offline"}${s.worker_note ? " · " + esc(s.worker_note) : ""}
+      · voice engine ${esc(s.engine || "stopped")}</p>
+    ${s.jobs.length ? `<table><tr><th>Request</th><th>Status</th><th class="num">Made</th></tr>
+      ${s.jobs.map(j => `<tr><td>${esc(j.level || "")} ${CATS[j.category]} <span class="muted">${{auto: "auto", mock: "mock", request: "asked"}[j.origin] || j.origin}${j.focus ? " · " + esc(j.focus) : ""}</span></td>
+        <td>${j.status}${j.error ? `<div class="muted">${esc(j.error.slice(0, 120))}</div>` : ""}</td><td class="num">${j.made}/${j.count}</td></tr>`).join("")}</table>` : ""}
+  </div>
+  <div class="card"><h2>Recent mistakes</h2>
+    ${s.mistakes.length ? `<table>${s.mistakes.map(x => `<tr><td>${esc(x.target || "")}</td><td class="muted">${CATS[x.category]} · ${esc(x.subtype || "")}</td>
+      <td class="muted">${x.correct ? "unsure" : "wrong"}</td></tr>`).join("")}</table>` : '<p class="muted">None yet.</p>'}
+    ${s.flagged ? `<p class="muted">${s.flagged} question(s) reported as broken.</p>` : ""}
+  </div>
+  <p class="muted" style="text-align:center">Questions written by Claude. Voices: VOICEVOX:No.7, 青山龍星, 玄野武宏, 剣崎雌雄,
+    冥鳴ひまり, もち子さん, 雨晴はう. Icon: Yuji Syuku font (SIL OFL).</p>`;
+  document.querySelectorAll("[data-level]").forEach(b => b.onclick = () => b.dataset.level !== s.level && setLevel(b.dataset.level));
+  let count = 10;
+  document.querySelectorAll("[data-n]").forEach(b => b.onclick = () => {
+    count = +b.dataset.n; document.querySelectorAll("[data-n]").forEach(x => x.classList.toggle("on", x === b)); });
+  $("#genForm").onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    await api("/api/generate", {category: f.get("category"), count, focus: f.get("focus")});
+    toast("Queued. New questions appear as soon as each batch is ready.");
+    renderStats();
+  };
+}
+
+setInterval(() => { if (st.tab === "study" && !document.hidden) refreshStats(); }, 60000);
+setInterval(() => { if (st.tab === "stats" && !document.hidden && !document.activeElement.matches("input,select")) renderStats(); }, 10000);
+applyFuri();
+renderModes();
+loadNext();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# Personal data and settings: never commit
+data/
+.env
+worker/learner.md
+worker/claude_cwd/
+__pycache__/

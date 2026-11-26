@@ -1,0 +1,33 @@
+# JStudy: JLPT study app. Settings: .env (copy .env.example). See README.md.
+# `web` serves the UI and API on the SQLite database in ./data.
+# `voicevox` (Japanese TTS, CPU) is in the "tts" profile, so a plain `docker compose up -d`
+# does not start it: the worker (worker/worker.py, on the host) starts it when listening
+# audio is needed and stops it after 10 idle minutes (~1–1.5 GB RAM while running).
+name: jstudy
+services:
+  web:
+    image: python:3.13-alpine
+    container_name: jstudy-web
+    restart: unless-stopped
+    user: "${JSTUDY_UID:-1000}:${JSTUDY_GID:-1000}"   # same owner as the worker's files in ./data
+    working_dir: /app
+    command: ["python", "-u", "server.py"]
+    environment:
+      - DB_PATH=/data/jstudy.db
+      - AUDIO_DIR=/data/audio
+      - PORT=8097
+      - JSTUDY_LEVEL=${JSTUDY_LEVEL:-N3}
+    ports:
+      - "${JSTUDY_BIND:-0.0.0.0}:${JSTUDY_PORT:-8097}:8097"
+    volumes:
+      - ./app:/app:ro
+      - ./data:/data
+      - /etc/localtime:/etc/localtime:ro   # same clock as the worker on the host
+
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-latest
+    container_name: jstudy-voicevox
+    profiles: ["tts"]
+    restart: "no"
+    ports:
+      - "127.0.0.1:50021:50021"   # only the worker on the host uses it
