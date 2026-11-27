@@ -25,9 +25,9 @@ PORT = int(os.environ.get("PORT", "8097"))
 CATEGORIES = levels.CATEGORIES
 # Relative share of each category in mixed mode, multiplied by the recent error rate.
 MIX_WEIGHTS = {"vocab": 3, "grammar": 2, "order": 1, "textgrammar": 1, "reading": 2, "listening": 3}
-# A set answered wrong (or "unsure") comes back after these delays; each
-# correct review moves it one step; after the last step it is retired.
-REVIEW_STEPS = [timedelta(minutes=10), timedelta(days=1), timedelta(days=3)]
+# A set answered wrong (or "unsure") comes back after the review steps chosen in
+# Settings; each correct review moves it one step; after the last step it is retired.
+PROFILE_MAX = 4000            # characters of the learner profile sent with every Claude request
 REVIEW_SHARE = 0.35          # chance to show a due review instead of a new set
 FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -46,31 +46,33 @@ def touch(conn):
 
 
 def review_state(conn, level):
-    """{set_id: (due: bool, last_answered: datetime)} for the level's usable
-    (status 'ready') sets in the review cycle. An attempt = one pass through a set's items; it is bad
-    if any item was wrong or unsure."""
+    """{set_id: (due, last_answered, due_items)} for the level's usable sets in the
+    review cycle. Each question of a set is tracked on its own, so a reading text
+    with one missed question comes back with only that question. Every answer to a
+    question is an attempt; wrong or unsure ones restart its review steps."""
     attempts = {}
     for r in conn.execute("""SELECT a.set_id, a.item, a.correct, a.unsure, a.answered_at
                              FROM answers a JOIN sets s ON s.id = a.set_id
-                             WHERE s.level = ? AND s.status = 'ready' ORDER BY a.id""", (level,)):
-        lst = attempts.setdefault(r["set_id"], [])
-        bad = (not r["correct"]) or r["unsure"]
-        if r["item"] == 0 or not lst:
-            lst.append([bad, r["answered_at"]])
-        else:
-            lst[-1][0] = lst[-1][0] or bad
-            lst[-1][1] = r["answered_at"]
+                             WHERE s.level = ? AND s.status = 'ready' AND NOT COALESCE(s.no_review, 0)
+                             ORDER BY a.id""", (level,)):
+        attempts.setdefault((r["set_id"], r["item"]), []).append(
+            ((not r["correct"]) or bool(r["unsure"]), r["answered_at"]))
     t = datetime.now()
+    steps = [timedelta(minutes=m) for m in store.get_settings(conn)["review_steps"]]
     out = {}
-    for sid, lst in attempts.items():
+    for (sid, item), lst in attempts.items():
         bads = [i for i, (bad, _) in enumerate(lst) if bad]
         if not bads:
             continue
         goods_after = len(lst) - 1 - bads[-1]
-        if goods_after >= len(REVIEW_STEPS):
+        if goods_after >= len(steps):
             continue
         last = datetime.strptime(lst[-1][1], FMT)
-        out[sid] = (t - last >= REVIEW_STEPS[goods_after], last)
+        due, prev_last, items = out.get(sid, (False, last, []))
+        if t - last >= steps[goods_after]:
+            due = True
+            items = sorted(items + [item])
+        out[sid] = (due, max(last, prev_last), items)
     return out
 
 
@@ -84,11 +86,21 @@ def error_rates(conn, level):
     return rates
 
 
-def set_payload(row, reason):
+def set_payload(row, reason, only_items=None):
+    """A set as sent to the page. For a review, only_items keeps just the questions that
+    are due; item_map gives their original numbers (answers are stored under those)."""
     data = json.loads(row["data"])
+    if only_items:
+        data["item_count"] = len(data["items"])
+        data["items"] = [data["items"][i] for i in only_items]
+        data["item_map"] = only_items
     return {"id": row["id"], "level": row["level"], "category": row["category"], "subtype": row["subtype"],
             "target": row["target"], "audio": row["audio"], "origin": row["origin"],
             "reason": reason, **data}
+
+
+def review_payload(row, state):
+    return set_payload(row, "review", state[row["id"]][2])
 
 
 def pick_next(conn, level, mode, exclude):
@@ -99,19 +111,19 @@ def pick_next(conn, level, mode, exclude):
         f"SELECT * FROM sets WHERE status = 'ready' AND level = ? AND category IN ({marks}) {no_mock}",
         (level, *cats))}
     state = review_state(conn, level)
-    due = sorted((last, sid) for sid, (is_due, last) in state.items()
+    due = sorted((last, sid) for sid, (is_due, last, _) in state.items()
                  if is_due and sid in ready and sid not in exclude)
     if mode == "review":
         if due:
-            return set_payload(ready[due[0][1]], "review"), None
-        pending = [last for sid, (is_due, last) in state.items() if not is_due and sid in ready]
+            return review_payload(ready[due[0][1]], state), None
+        pending = [sid for sid, (is_due, _, _) in state.items() if not is_due and sid in ready]
         return None, ("No reviews due right now." if not pending else
                       f"No reviews due right now ({len(pending)} waiting for their next review).")
 
     answered = {r[0] for r in conn.execute("SELECT DISTINCT set_id FROM answers")}
     unseen = [r for sid, r in ready.items() if sid not in answered and sid not in exclude]
     if due and (not unseen or random.random() < REVIEW_SHARE):
-        return set_payload(ready[due[0][1]], "review"), None
+        return review_payload(ready[due[0][1]], state), None
     if not unseen:
         return None, "No new questions left here. Claude is generating more; this page checks again by itself."
     if mode == "mix":
@@ -323,11 +335,12 @@ def stats(conn, level):
     state = review_state(conn, level)
     return {"level": level, "levels": levels.LEVELS,
             "categories": cats, "today": {"answered": t["n"], "correct": t["ok"] or 0},
-            "reviews_due": sum(1 for d, _ in state.values() if d), "reviews_waiting": len(state),
+            "reviews_due": sum(1 for d, _, _ in state.values() if d), "reviews_waiting": len(state),
             "mistakes": mistakes, "queue": queue, "recent_jobs": recent, "audio_waiting": audio_waiting,
             "flagged": conn.execute("SELECT COUNT(*) FROM sets WHERE status = 'flagged' AND level = ?",
                                     (level,)).fetchone()[0],
             "worker_seen": meta.get("worker_seen"), "worker_note": meta.get("worker_note"),
+            "auto_paused": meta.get("auto_paused") or "", "settings": store.get_settings(conn),
             "worker_warning": meta.get("worker_warning"),
             "engine": meta.get("engine"), "usage": json.loads(meta.get("usage") or "{}")}
 
@@ -387,6 +400,13 @@ class Handler(BaseHTTPRequestHandler):
             with db() as conn:
                 r = mock_result(conn, int(q.get("id", 0)))
             self.send_json(r or {"error": "not found"}, 200 if r else 404)
+        elif url.path == "/api/profile":
+            with db() as conn:
+                r = conn.execute("SELECT value FROM meta WHERE key = 'learner_profile'").fetchone()
+            self.send_json({"text": r[0] if r else ""})
+        elif url.path == "/api/settings":
+            with db() as conn:
+                self.send_json(store.get_settings(conn))
         elif url.path == "/api/stats":
             with db() as conn:
                 self.send_json(stats(conn, store.current_level(conn)))
@@ -460,6 +480,21 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"error": "no such finished mock"}, 404)
                 discard_mock(conn, mock)
                 self.send_json({"ok": True})
+            elif path == "/api/profile":
+                text = str(body.get("text", "")).strip()
+                if len(text) > PROFILE_MAX:
+                    return self.send_json({"error": f"Too long (max {PROFILE_MAX} characters)."}, 400)
+                conn.execute("INSERT OR REPLACE INTO meta VALUES ('learner_profile', ?)", (text,))
+                self.send_json({"ok": True})
+            elif path == "/api/settings":
+                try:
+                    self.send_json(store.save_settings(conn, body))
+                except ValueError as exc:
+                    return self.send_json({"error": str(exc)}, 400)
+            elif path == "/api/review/drop":
+                # "Don't review again": the set leaves the review cycle for good (its answers stay in the stats).
+                n = conn.execute("UPDATE sets SET no_review = 1 WHERE id = ?", (body.get("set_id"),)).rowcount
+                self.send_json({"ok": bool(n)})
             elif path == "/api/flag":
                 conn.execute("UPDATE sets SET status = 'flagged', flag_note = ? WHERE id = ?",
                              (str(body.get("note", ""))[:500], body.get("set_id")))

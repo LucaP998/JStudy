@@ -4,9 +4,9 @@ because headless Claude needs the Claude Code login of the person running it).
 
 Loop, every few seconds:
   1. Mock exam jobs and "Generate more" requests run first.
-  2. While the student is studying (UI used in the last ACTIVE_WINDOW), each
-     category of the current JLPT level is topped up so there are always
-     unseen questions. Every batch sees the student's recent mistakes, so new
+  2. While the student is studying (UI used in the last ACTIVE_WINDOW), or at
+     any time if Settings say so, each category of the current JLPT level is
+     topped up so there are always unseen questions. Every batch sees the student's recent mistakes, so new
      questions target exactly what went wrong.
   3. Listening sets get their audio from VOICEVOX (started on demand with
      docker compose, stopped again after ENGINE_IDLE of inactivity).
@@ -15,7 +15,8 @@ Claude runs with no tools, no MCP, no skills, from an empty directory. With a
 Claude subscription login the calls count against that subscription's usage
 limits; with an API key they are billed per token (the app shows a warning).
 
-Settings come from the environment or the repo's .env file (see .env.example).
+Machine settings come from the environment or the repo's .env file (see
+.env.example); study settings (model, pause limits, ...) are edited in the app.
 
   worker.py            run forever (the service)
   worker.py --once     one pass, then exit (testing)
@@ -67,7 +68,6 @@ FFMPEG = shutil.which("ffmpeg") or "ffmpeg"
 VOICEVOX = os.environ.get("JSTUDY_VOICEVOX_URL", "http://127.0.0.1:50021").rstrip("/")
 MANAGE_VOICEVOX = os.environ.get("JSTUDY_MANAGE_VOICEVOX", "1") != "0"   # start/stop it with docker compose
 
-CLAUDE_MODEL = os.environ.get("JSTUDY_MODEL", "opus")
 CLAUDE_TIMEOUT = 600
 CLAUDE_LOCKDOWN = [
     "--tools", "", "--strict-mcp-config", "--disable-slash-commands",
@@ -85,7 +85,6 @@ BATCH = {"vocab": 6, "grammar": 6, "order": 5, "textgrammar": 1, "reading": 2, "
 TOPUP = {"vocab": (8, 14), "grammar": (5, 10), "order": (4, 8), "textgrammar": (1, 2),
          "reading": (2, 4), "listening": (5, 10)}
 USAGE_MAX_AGE = timedelta(minutes=10)     # refresh the usage reading this often while studying
-AUTO_PAUSE_AT = float(os.environ.get("JSTUDY_AUTO_PAUSE", "0.85"))   # 5-hour usage that pauses auto top-up
 RECENT_MISTAKES = 8                       # mistakes shown to Claude per batch (distinct targets)
 REPRACTICE = 2                            # newer sets per missed target before it stops being re-practised
 AVOID_TARGETS = 150                       # recent targets Claude should not repeat
@@ -108,7 +107,15 @@ The question is a sentence with four blanks written ＿＿＿ and one of them ma
 for example: 「この[店|みせ]は ＿＿＿ ＿＿＿ ★ ＿＿＿ [人気|にんき]がある。」 (the ★ may be any
 of the four positions). The 4 options are the four chunks (in any order); `answer` is the
 chunk that goes in the ★ position. The explanation must write out the full correct sentence
-(do not refer to option numbers). Subtypes (exact name as the subtype field):""",
+(do not refer to option numbers).
+ONE order only: the four chunks must fit together in exactly one natural, grammatical order, as on
+the real exam. Do not use a chunk that could also sit somewhere else, such as a free-floating adverb
+(実際に, もっと, ちゃんと, ずっと…) or a time/place phrase that could modify more than one word:
+「[料理|りょうり]が / [実際|じっさい]に / おいしい / かどうかは」 fails, because 実際に can go before おいしい or
+before the verb that follows. Tie each chunk grammatically to its neighbours (particles, conjugated
+endings, set patterns). Before finishing, try the other orders of the four chunks: if any other order
+is also acceptable Japanese, or puts a different chunk in the ★ position, rewrite the item.
+Subtypes (exact name as the subtype field):""",
     "textgrammar": """Category: 文章の文法 (text grammar). One set = a passage (a student's essay, a letter,
 a blog post) put in `passage`, with blanks marked （1）（2）… in the text. One item per blank, in
 order; each item's `question` is just the blank label, e.g. 「（1）」. Test connectives (しかし,
@@ -178,6 +185,40 @@ def get_meta(conn, key):
     return r[0] if r else None
 
 
+def import_env_settings(conn):
+    """Older installs set the model and the 5-hour pause in .env (JSTUDY_MODEL,
+    JSTUDY_AUTO_PAUSE); the app now edits them. Carry them over once."""
+    if get_meta(conn, "settings") is not None:
+        return
+    raw = {}
+    if os.environ.get("JSTUDY_MODEL"):
+        raw["model"] = os.environ["JSTUDY_MODEL"].strip().lower()
+    if os.environ.get("JSTUDY_AUTO_PAUSE"):
+        try:
+            raw["pause_5h"] = round(float(os.environ["JSTUDY_AUTO_PAUSE"]) * 100)
+        except ValueError:
+            pass
+    if raw:
+        try:
+            store.save_settings(conn, raw)
+            conn.commit()
+            log(f"imported settings from .env: {raw}")
+        except ValueError as exc:
+            log(f"ignored .env settings ({exc})")
+
+
+def import_learner_file(conn):
+    """Older installs kept the learner profile in worker/learner.md; the app now edits it
+    (meta 'learner_profile'). Copy the file in once, if the app has no profile yet."""
+    f = HERE / "learner.md"
+    if get_meta(conn, "learner_profile") is None and f.is_file() and f.read_text().strip():
+        text = f.read_text().strip()
+        if text.startswith("# "):             # drop the template's "# About the student" title
+            text = text.split("\n", 1)[-1].strip()
+        set_meta(conn, "learner_profile", text)
+        log("imported worker/learner.md into the app's learner profile")
+
+
 # ---------------------------------------------------------------- claude
 
 def claude_call(prompt, model, schema=None):
@@ -207,8 +248,8 @@ def claude_call(prompt, model, schema=None):
     return result
 
 
-def run_claude(prompt):
-    result = claude_call(prompt, CLAUDE_MODEL, SCHEMA_JSON).get("structured_output")
+def run_claude(prompt, model):
+    result = claude_call(prompt, model, SCHEMA_JSON).get("structured_output")
     if not isinstance(result, dict) or not isinstance(result.get("sets"), list):
         raise RuntimeError("no structured output")
     return result["sets"]
@@ -277,10 +318,18 @@ def refresh_usage(conn):
         set_meta(conn, "usage", json.dumps(u))
 
 
-def auto_paused(conn):
-    five = usage_reading(conn).get("five_hour") or {}
-    used, resets = five.get("used"), five.get("resets_at") or 0
-    return used is not None and used >= AUTO_PAUSE_AT and time.time() < resets
+def auto_paused(conn, settings):
+    """Why automatic questions are paused ("" = not paused): a usage window is above
+    the limit chosen in Settings."""
+    u = usage_reading(conn)
+    for key, setting, name in (("five_hour", "pause_5h", "5-hour"), ("seven_day", "pause_week", "weekly")):
+        limit, w = settings[setting], u.get(key) or {}
+        used, resets = w.get("used"), w.get("resets_at") or 0
+        if limit is not None and used is not None and used * 100 >= limit and time.time() < resets:
+            at = datetime.fromtimestamp(resets).strftime("%a %H:%M" if key == "seven_day" else "%H:%M")
+            return (f"Automatic questions paused: Claude {name} usage is {used:.0%}, above your "
+                    f"{limit}% limit (resets {at}). Your own requests and mock exams still run.")
+    return ""
 
 
 # ---------------------------------------------------------------- generation
@@ -319,9 +368,10 @@ def build_prompt(conn, level, category, n, focus):
     parts = [(HERE / "prompt.md").read_text().replace("{LEVEL}", level),
              "# Level\n" + levels.SCOPE[level],
              CATEGORY_RULES[category] + "\n" + levels.subtype_lines(level, category)]
-    learner = HERE / "learner.md"
-    if learner.is_file() and learner.read_text().strip():
-        parts.append(learner.read_text())
+    profile = (get_meta(conn, "learner_profile") or "").strip()
+    if profile:
+        parts.append("# About the student (written by the student; adapt to it, but every question must "
+                     "still look like a real JLPT " + level + " question)\n" + profile)
     mistakes = recent_mistakes(conn, level, category)
     if mistakes:
         parts.append("# The student's most recent mistakes in this category (newest first)\n"
@@ -389,7 +439,7 @@ def run_job(conn, job):
         log(f"job {job['id']}: asking Claude for {n} {level} {cat} set(s)")
         t0 = time.time()
         try:
-            sets = run_claude(build_prompt(conn, level, cat, n, job["focus"]))
+            sets = run_claude(build_prompt(conn, level, cat, n, job["focus"]), store.get_settings(conn)["model"])
         except Exception as exc:
             failures += 1
             log(f"job {job['id']}: Claude failed ({exc})")
@@ -433,19 +483,26 @@ def studying(conn):
     return bool(last) and datetime.now() - datetime.strptime(last, TIME_FMT) < ACTIVE_WINDOW
 
 
-def top_up(conn, level):
+def top_up_plan(conn, level, settings):
+    """{category: sets to queue} to bring each category back to its stock size."""
+    k, plan = store.STOCK[settings["stock"]], {}
     for cat, (low, fill) in TOPUP.items():
+        low, fill = max(1, round(low * k)), max(1, round(fill * k))
         unseen = conn.execute(
             """SELECT COUNT(*) FROM sets WHERE level = ? AND category = ? AND status IN ('ready', 'needs_audio')
                AND id NOT IN (SELECT set_id FROM answers)""", (level, cat)).fetchone()[0]
         coming = conn.execute("SELECT COALESCE(SUM(count - made), 0) FROM jobs WHERE level = ? AND category = ? "
                               "AND status IN ('pending', 'running')", (level, cat)).fetchone()[0]
         if unseen + coming < low:
-            n = fill - unseen - coming
-            conn.execute("INSERT INTO jobs (level, category, count, origin) VALUES (?, ?, ?, 'auto')",
-                         (level, cat, n))
-            conn.commit()
-            log(f"top-up: queued {n} {level} {cat} (unseen {unseen}, coming {coming})")
+            plan[cat] = fill - unseen - coming
+    return plan
+
+
+def top_up(conn, level, plan):
+    for cat, n in plan.items():
+        conn.execute("INSERT INTO jobs (level, category, count, origin) VALUES (?, ?, ?, 'auto')", (level, cat, n))
+        conn.commit()
+        log(f"top-up: queued {n} {level} {cat}")
 
 
 # --------------------------------------------------------------------- audio
@@ -567,16 +624,19 @@ def maybe_stop_engine(conn):
 def one_pass(conn):
     set_meta(conn, "worker_seen", datetime.now().strftime(TIME_FMT))
     check_auth(conn)
-    paused = False
+    paused = ""
     level = store.current_level(conn)      # None until the student picks a level in the app
     # During a mock exam only its questions (and explicit requests) are written: reserving
     # sets for the mock empties the normal pool, and refilling it can wait until the mock ends.
     in_mock = conn.execute("SELECT 1 FROM mocks WHERE status = 'active'").fetchone() is not None
-    if studying(conn) and level:
-        refresh_usage(conn)
-        paused = auto_paused(conn)
-        if not paused and not in_mock:
-            top_up(conn, level)
+    settings = store.get_settings(conn)
+    if level and (studying(conn) or settings["schedule"] == "always"):
+        plan = top_up_plan(conn, level, settings)
+        if studying(conn) or plan:          # when away, only check usage if there is something to write
+            refresh_usage(conn)
+            paused = auto_paused(conn, settings)
+            if plan and not paused and not in_mock:
+                top_up(conn, level, plan)
     # Mock exam and "Generate more" jobs first (in order); above the usage
     # brake or during a mock only those run.
     job = conn.execute(f"""SELECT * FROM jobs WHERE status IN ('pending', 'running')
@@ -587,8 +647,8 @@ def one_pass(conn):
         run_job(conn, job)
     make_pending_audio(conn)
     maybe_stop_engine(conn)
-    set_meta(conn, "worker_note", "Paused automatic questions: Claude 5-hour usage above "
-             f"{AUTO_PAUSE_AT:.0%}. Your own requests still run." if paused else "")
+    set_meta(conn, "auto_paused", paused)
+    set_meta(conn, "worker_note", "")
     return bool(job)
 
 
@@ -597,7 +657,9 @@ def main():
     store.init(DB_PATH)
     conn = db()
     set_meta(conn, "auth_checked", "0")
-    log(f"worker started (model {CLAUDE_MODEL}, claude at {CLAUDE}, database {DB_PATH})")
+    import_learner_file(conn)
+    import_env_settings(conn)
+    log(f"worker started (model {store.get_settings(conn)['model']}, claude at {CLAUDE}, database {DB_PATH})")
     while True:
         try:
             busy = one_pass(conn)

@@ -22,7 +22,8 @@ couch over your home network.
 - **Listening with real audio.** Dialogues are voiced by VOICEVOX with a narrator and different
   male/female voices; playback speed 0.8×–1.15×; full transcript after answering.
 - **Review of mistakes.** Wrong or 🤔 "not sure" answers come back after 10 minutes, 1 day and
-  3 days.
+  3 days (1 to 5 steps of your choice in Settings). In a reading text or listening set, only the
+  questions you missed come back; *Don't review again* drops a question from your reviews.
 - **Mock exams.** Half or full mock in the real structure of your level, no feedback until the
   end, then a score per scored section with the official pass marks and a review of every mistake.
 - **Explanations in English** for every question, with readings, why the distractors are wrong
@@ -30,7 +31,7 @@ couch over your home network.
 - **Furigana** off, on tap, or always on; stats per section, undo for mis-taps, installable on the phone
   home screen.
 - **Claude usage meter**: your subscription's 5-hour and weekly usage in the header, and automatic
-  generation pauses before it eats your whole 5-hour window.
+  generation pauses before it eats your whole 5-hour or weekly limit (limits of your choice).
 
 ## How it works
 
@@ -78,29 +79,31 @@ within a minute or two. You can switch level any time with the level badge next 
 Two optional steps:
 
 - **Keep the worker running when you are logged out:** `sudo loginctl enable-linger $USER`.
-- **Tell Claude about yourself:** copy `worker/learner.example.md` to `worker/learner.md` and
-  describe your background, strengths and weak points. It is added to every request.
+- **Tell Claude about yourself:** on the *Profile* page (*About you*), describe your background, strengths
+  and weak points. It is added to every request.
 
 On a phone, open the page and use *Add to Home Screen* (Safari) or *Install app* (Chrome) for a
 full-screen app with its own icon.
 
 ## Configuration
 
-Settings live in `.env` (created by the setup script; see `.env.example` for comments). After a
-change, run `docker compose up -d` and `systemctl --user restart jstudy-worker`.
+**In the app** (☰ → *Settings* → *Preferences*): the Claude model, the 5-hour and weekly usage limits that
+pause automatic questions (85% and 90% by default), the review steps, how many questions are kept
+ready, and whether Claude writes them only while you study or anytime.
+
+**Machine settings** live in `.env` (created by the setup script; see `.env.example` for comments).
+After a change, run `docker compose up -d` and `systemctl --user restart jstudy-worker`.
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `JSTUDY_PORT` | `8097` | Port of the web app |
 | `JSTUDY_BIND` | `0.0.0.0` | Address it listens on (`127.0.0.1` = this machine only) |
 | `JSTUDY_UID` / `JSTUDY_GID` | your ids | Owner of the files in `data/` |
-| `JSTUDY_MODEL` | `opus` | Claude model that writes questions: `opus`, `sonnet` or `haiku` |
-| `JSTUDY_AUTO_PAUSE` | `0.85` | 5-hour usage at which automatic generation pauses |
 | `JSTUDY_CLAUDE_BIN` | found on `PATH` | Path to the `claude` CLI |
 | `JSTUDY_VOICEVOX_URL` | `http://127.0.0.1:50021` | VOICEVOX engine to use |
 | `JSTUDY_MANAGE_VOICEVOX` | `1` | `0` = use an engine you run yourself, don't start/stop it |
 
-**Model choice.** Opus writes the most reliable questions (correct answer keys, natural Japanese,
+**Model choice** (in Settings). Opus writes the most reliable questions (correct answer keys, natural Japanese,
 good distractors) and is recommended. Sonnet and Haiku use less of your usage limits but make more
 mistakes, especially in explanations.
 
@@ -113,7 +116,9 @@ mistakes, especially in explanations.
 - **📝 Mock exam:** a half or full exam for your level. *Stop mock* lets you discard it (as if you never
   started) or keep your answers; a finished mock can be deleted from its results page.
 - **Level badge** (next to the title): switch between N5 and N1.
-- **Progress:** accuracy per section, Claude usage, *Generate more*, recent mistakes.
+- **☰ menu** (top right) switches between *Study*, *Profile* (today's numbers, accuracy per
+  section, recent mistakes, *About you*) and *Settings* (Claude usage, *Generate more*, the
+  generation queue, *Preferences*).
 
 Each level keeps its own questions, statistics, reviews and mock exams; switching level never
 deletes anything.
@@ -123,8 +128,8 @@ deletes anything.
 - **The web app has no login.** Anyone who can open it can generate questions with your Claude
   account. Keep it on your home network or a VPN such as Tailscale; do not expose it to the internet.
 - Everything is stored locally in `data/`. What leaves your machine: the prompts sent to Claude
-  (instructions, your level, your recent mistakes, `worker/learner.md`) and nothing else.
-- `.env`, `data/` and `worker/learner.md` are listed in `.gitignore`.
+  (instructions, your level, your recent mistakes, your *About you* profile) and nothing else.
+- `.env` and `data/` (which holds your profile and answers) are listed in `.gitignore`.
 
 ## Maintenance
 
@@ -138,7 +143,7 @@ git pull && docker compose up -d && systemctl --user restart jstudy-worker   # u
 
 Troubleshooting:
 
-- **"Worker offline"** in Progress: check the worker log; usually Claude Code is logged out
+- **"Worker offline"** on the Settings page: check the worker log; usually Claude Code is logged out
   (run `claude` and log in again).
 - **Listening questions never arrive:** check that VOICEVOX starts with
   `docker compose --profile tts up voicevox` and look for errors.
@@ -156,7 +161,6 @@ app/schema.sql              SQLite schema
 app/static/                 icons and web app manifest
 worker/worker.py            question generation (Claude), top-up, audio (VOICEVOX + ffmpeg)
 worker/prompt.md            rules Claude follows for every question
-worker/learner.example.md   template for your own learner.md
 scripts/setup.sh            installer
 compose.yaml                web app + VOICEVOX
 ```

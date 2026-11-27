@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # JStudy setup: checks requirements, creates .env, starts the web app, pulls the
 # VOICEVOX image and installs the worker as a systemd user service.
-# Safe to run again (it keeps an existing .env and learner.md).
+# Safe to run again (it keeps an existing .env).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -38,13 +38,11 @@ fi
 echo "Settings"
 if [ ! -f .env ]; then
   sed -e "s/^JSTUDY_UID=.*/JSTUDY_UID=$(id -u)/" -e "s/^JSTUDY_GID=.*/JSTUDY_GID=$(id -g)/" .env.example > .env
-  ok "created .env (edit it to change port, level or model)"
+  ok "created .env (edit it to change the port or network address)"
 else
   ok ".env already exists, kept"
 fi
 mkdir -p data/audio
-[ -f worker/learner.md ] && ok "worker/learner.md found" \
-  || warn "optional: copy worker/learner.example.md to worker/learner.md and describe your strengths and weaknesses"
 
 echo "Web app"
 docker compose up -d

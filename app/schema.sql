@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS sets (
     audio       TEXT,               -- mp3 file name in data/audio (listening)
     status      TEXT NOT NULL DEFAULT 'ready',  -- ready | needs_audio | audio_failed | flagged | mock | retired
     flag_note   TEXT,
+    no_review   INTEGER NOT NULL DEFAULT 0,     -- 1 = "don't review again" (left the review cycle)
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
