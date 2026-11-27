@@ -27,6 +27,7 @@ CATEGORIES = levels.CATEGORIES
 MIX_WEIGHTS = {"vocab": 3, "grammar": 2, "order": 1, "textgrammar": 1, "reading": 2, "listening": 3}
 # A set answered wrong (or "unsure") comes back after the review steps chosen in
 # Settings; each correct review moves it one step; after the last step it is retired.
+ASK_MAX = 1000                # characters of a question to Claude about an answered question
 PROFILE_MAX = 4000            # characters of the learner profile sent with every Claude request
 REVIEW_SHARE = 0.35          # chance to show a due review instead of a new set
 FMT = "%Y-%m-%d %H:%M:%S"
@@ -404,6 +405,18 @@ class Handler(BaseHTTPRequestHandler):
             with db() as conn:
                 r = conn.execute("SELECT value FROM meta WHERE key = 'learner_profile'").fetchone()
             self.send_json({"text": r[0] if r else ""})
+        elif url.path == "/api/ask":
+            # One question to Claude (polled by the page until it is answered).
+            with db() as conn:
+                r = conn.execute("SELECT id, status, answer, error FROM asks WHERE id = ?",
+                                 (int(q.get("id", 0) or 0),)).fetchone()
+            self.send_json(dict(r) if r else {"error": "not found"}, 200 if r else 404)
+        elif url.path == "/api/asks":
+            # Earlier questions about this question, oldest first.
+            with db() as conn:
+                rows = conn.execute("""SELECT id, question, answer, status, error FROM asks WHERE set_id = ? AND item = ?
+                                       ORDER BY id""", (int(q.get("set_id", 0) or 0), int(q.get("item", 0) or 0)))
+                self.send_json({"asks": [dict(r) for r in rows]})
         elif url.path == "/api/settings":
             with db() as conn:
                 self.send_json(store.get_settings(conn))
@@ -491,6 +504,23 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(store.save_settings(conn, body))
                 except ValueError as exc:
                     return self.send_json({"error": str(exc)}, 400)
+            elif path == "/api/ask":
+                text = str(body.get("question", "")).strip()
+                if not text:
+                    return self.send_json({"error": "Write your question first."}, 400)
+                if len(text) > ASK_MAX:
+                    return self.send_json({"error": f"Too long (max {ASK_MAX} characters)."}, 400)
+                row = conn.execute("SELECT data FROM sets WHERE id = ?", (body.get("set_id"),)).fetchone()
+                item = int(body.get("item", 0) or 0)
+                if not row or not 0 <= item < len(json.loads(row["data"])["items"]):
+                    return self.send_json({"error": "no such question"}, 404)
+                if conn.execute("SELECT COUNT(*) FROM asks WHERE status IN ('pending', 'running')").fetchone()[0] >= 3:
+                    return self.send_json({"error": "Claude is still answering your earlier questions."}, 429)
+                chosen = body.get("chosen")
+                cur = conn.execute("INSERT INTO asks (set_id, item, chosen, question) VALUES (?, ?, ?, ?)",
+                                   (body["set_id"], item, chosen if isinstance(chosen, int) else None, text))
+                touch(conn)
+                self.send_json({"id": cur.lastrowid})
             elif path == "/api/review/drop":
                 # "Don't review again": the set leaves the review cycle for good (its answers stay in the stats).
                 n = conn.execute("UPDATE sets SET no_review = 1 WHERE id = ?", (body.get("set_id"),)).rowcount

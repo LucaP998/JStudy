@@ -60,3 +60,18 @@ CREATE TABLE IF NOT EXISTS mocks (
 );
 
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+
+-- "Ask Claude" after answering: the web app queues the question, the worker answers it.
+CREATE TABLE IF NOT EXISTS asks (
+    id          INTEGER PRIMARY KEY,
+    set_id      INTEGER NOT NULL REFERENCES sets(id),
+    item        INTEGER NOT NULL DEFAULT 0,
+    chosen      INTEGER,            -- the option the student picked (index in the stored order)
+    question    TEXT NOT NULL,
+    answer      TEXT,
+    status      TEXT NOT NULL DEFAULT 'pending',   -- pending | running | done | failed
+    error       TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    answered_at TEXT
+);
+CREATE INDEX IF NOT EXISTS asks_set ON asks(set_id, item);

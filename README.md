@@ -28,6 +28,9 @@ couch over your home network.
   end, then a score per scored section with the official pass marks and a review of every mistake.
 - **Explanations in English** for every question, with readings, why the distractors are wrong
   and mnemonics for look-alike words.
+- **Ask Claude** after answering: type a follow-up question ("why not option 2?", "can I also
+  say …?") and Claude answers knowing the question, the passage or audio script, the right answer
+  and the one you picked.
 - **Furigana** off, on tap, or always on; stats per section, undo for mis-taps, installable on the phone
   home screen.
 - **Claude usage meter**: your subscription's 5-hour and weekly usage in the header, and automatic

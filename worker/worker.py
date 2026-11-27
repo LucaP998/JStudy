@@ -8,6 +8,8 @@ Loop, every few seconds:
      any time if Settings say so, each category of the current JLPT level is
      topped up so there are always unseen questions. Every batch sees the student's recent mistakes, so new
      questions target exactly what went wrong.
+  0. "Ask Claude" questions about an answered question are answered at once,
+     in their own thread (they don't wait behind a batch of new questions).
   3. Listening sets get their audio from VOICEVOX (started on demand with
      docker compose, stopped again after ENGINE_IDLE of inactivity).
 
@@ -29,6 +31,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -330,6 +333,88 @@ def auto_paused(conn, settings):
             return (f"Automatic questions paused: Claude {name} usage is {used:.0%}, above your "
                     f"{limit}% limit (resets {at}). Your own requests and mock exams still run.")
     return ""
+
+
+# ------------------------------------------------------------- ask Claude
+
+ASK_PROMPT = """You are a friendly, precise Japanese teacher. A student preparing for the JLPT {level} has just
+answered the practice question below in a study app and asks you about it. Answer their question.
+
+- Reply in the language the student writes in. Be concise: usually 3–8 sentences; longer only if they ask
+  for a detailed explanation. Give the reading and meaning of the Japanese words you discuss.
+- Plain text only: no markdown headings, bold, tables or code. Short paragraphs separated by a blank line;
+  simple "- " lists are fine.
+- Write furigana with the markup [漢字|かんじ], one word per bracket, okurigana outside: [食|た]べる.
+- The options are numbered 1–4 in the order the student saw them; quote the option text as well.
+- The question was written by an AI and can be wrong. If the student points out a problem (two correct
+  options, a wrong answer key, unnatural Japanese), check it honestly. If they are right, say so plainly
+  and suggest they use "Report a problem with this question".
+- Stay on this question and on Japanese; politely decline anything unrelated."""
+
+
+def ask_context(s, item, chosen):
+    data = json.loads(s["data"])
+    it = data["items"][item]
+    lines = [f"Section: {s['category']} / {s['subtype']}"]
+    if data.get("passage"):
+        lines.append("Passage:\n" + data["passage"])
+    if data.get("script"):
+        who = {"N": "Narrator", "M": "Man", "F": "Woman"}
+        lines.append("Listening script (the student heard this as audio):\n"
+                     + "\n".join(f"{who.get(l['speaker'], l['speaker'])}: {l['text']}" for l in data["script"]))
+    lines.append(f"Question: {it['question']}")
+    lines.append("Options:\n" + "\n".join(f"{i + 1}. {o}" for i, o in enumerate(it["options"])))
+    lines.append(f"Correct answer: {it['answer'] + 1}. {it['options'][it['answer']]}")
+    if chosen is not None and 0 <= chosen < len(it["options"]):
+        lines.append(f"The student chose: {chosen + 1}. {it['options'][chosen]}"
+                     + (" (correct)" if chosen == it["answer"] else " (wrong)"))
+    lines.append(f"Explanation the app showed: {it['explanation']}")
+    return "\n\n".join(lines)
+
+
+def answer_ask(conn, ask):
+    s = conn.execute("SELECT * FROM sets WHERE id = ?", (ask["set_id"],)).fetchone()
+    earlier = conn.execute("""SELECT question, answer FROM asks WHERE set_id = ? AND item = ? AND id < ?
+                              AND status = 'done' ORDER BY id DESC LIMIT 6""",
+                           (ask["set_id"], ask["item"], ask["id"])).fetchall()[::-1]
+    parts = [ASK_PROMPT.replace("{level}", s["level"] or ""), "# The question\n" + ask_context(s, ask["item"], ask["chosen"])]
+    if earlier:
+        parts.append("# Earlier in this conversation\n" + "\n\n".join(f"Student: {e['question']}\nYou: {e['answer']}"
+                                                                     for e in earlier))
+    parts.append("# The student's question\n" + ask["question"])
+    result = claude_call("\n\n".join(parts), store.get_settings(conn)["model"])
+    text = str(result.get("result") or "").strip()
+    if not text:
+        raise RuntimeError("empty answer")
+    return text
+
+
+def ask_loop():
+    """Thread: answer pending "Ask Claude" questions, oldest first."""
+    conn = db()
+    conn.execute("UPDATE asks SET status = 'pending' WHERE status = 'running'")   # interrupted by a restart
+    conn.commit()
+    while True:
+        try:
+            ask = conn.execute("SELECT * FROM asks WHERE status = 'pending' ORDER BY id LIMIT 1").fetchone()
+            if not ask:
+                time.sleep(1)
+                continue
+            conn.execute("UPDATE asks SET status = 'running' WHERE id = ?", (ask["id"],))
+            conn.commit()
+            t0 = time.time()
+            try:
+                text = answer_ask(conn, ask)
+                conn.execute("""UPDATE asks SET status = 'done', answer = ?, answered_at = datetime('now', 'localtime')
+                                WHERE id = ?""", (text, ask["id"]))
+                log(f"ask {ask['id']}: answered in {time.time() - t0:.0f}s")
+            except Exception as exc:
+                conn.execute("UPDATE asks SET status = 'failed', error = ? WHERE id = ?", (str(exc)[:300], ask["id"]))
+                log(f"ask {ask['id']}: failed ({exc})")
+            conn.commit()
+        except Exception as exc:
+            log(f"ask loop error: {exc}")
+            time.sleep(5)
 
 
 # ---------------------------------------------------------------- generation
@@ -659,6 +744,8 @@ def main():
     set_meta(conn, "auth_checked", "0")
     import_learner_file(conn)
     import_env_settings(conn)
+    if "--once" not in sys.argv:
+        threading.Thread(target=ask_loop, name="ask", daemon=True).start()
     log(f"worker started (model {store.get_settings(conn)['model']}, claude at {CLAUDE}, database {DB_PATH})")
     while True:
         try:
